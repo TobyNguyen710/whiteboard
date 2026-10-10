@@ -1,0 +1,24 @@
+# Design docs stay local - never commit them
+*design*.md
+*Design*.md
+*DESIGN*.md
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-types/
+*.tsbuildinfo
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs / OS / editor
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
