@@ -31,7 +31,7 @@ npm run dev:client   # http://localhost:5173
 ## v1 roadmap
 
 - [x] Project scaffold
-- [ ] Solo canvas: freehand drawing in one tab
+- [x] Solo canvas: freehand drawing in one tab
 - [ ] Deploy client to Vercel
 - [ ] Rooms and live sync between tabs
 - [ ] Late join: new users see full history

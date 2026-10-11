@@ -1,12 +1,5 @@
-import { CANVAS_HEIGHT, CANVAS_WIDTH } from "@whiteboard/shared";
+import { Canvas } from "./Canvas";
 
 export function App() {
-  return (
-    <main>
-      <h1>Whiteboard</h1>
-      <p>
-        Canvas coming soon ({CANVAS_WIDTH}×{CANVAS_HEIGHT} logical size).
-      </p>
-    </main>
-  );
+  return <Canvas />;
 }
