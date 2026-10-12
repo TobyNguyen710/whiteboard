@@ -10,3 +10,7 @@
 - Fixed 1920×1080 logical board, scaled to fit any window, so drawings look the same on every screen.
 - Smoother strokes using quadratic curves.
 - Vercel config for deploying the client.
+- Board links: `/board/:roomId`, with a short readable room ID created automatically when missing.
+- Client connects to the server over Socket.IO and joins the board's room (rejoins after reconnect).
+- Connection badge with status, room ID, and a "Copy link" button.
+- "Join" (accepts a board ID or a pasted link) and "New board" buttons.

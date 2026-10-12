@@ -19,3 +19,84 @@ body {
   /* Stop touch and pen input from scrolling or zooming the page while drawing. */
   touch-action: none;
 }
+
+.room-badge {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
+  font: 13px/1.2 system-ui, sans-serif;
+  color: #1e1e1e;
+}
+
+.room-badge .room-id {
+  font-family: ui-monospace, monospace;
+  color: #6b6b75;
+}
+
+.room-badge button {
+  border: none;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: #1e1e1e;
+  color: #ffffff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.room-badge button.secondary {
+  background: #ececf0;
+  color: #1e1e1e;
+}
+
+.join-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.join-form input {
+  width: 14em;
+  padding: 4px 10px;
+  border: 1px solid #c8c8d0;
+  border-radius: 999px;
+  font: inherit;
+  outline: none;
+}
+
+.join-form input:focus {
+  border-color: #1e1e1e;
+}
+
+.join-form input[aria-invalid="true"] {
+  border-color: #d0342c;
+}
+
+.join-error {
+  color: #d0342c;
+  padding-right: 6px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-connected {
+  background: #22a559;
+}
+
+.status-connecting {
+  background: #e0a100;
+}
+
+.status-offline {
+  background: #a0a0a8;
+}
