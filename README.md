@@ -2,6 +2,8 @@
 
 An all-in-one collaborative canvas: part Paint, part graph drawer, part Figma-lite. Open a board link and draw together in real time.
 
+**Live:** https://whiteboard-ochre-five.vercel.app
+
 > 🚧 Early development. Built a little at a time; see [CHANGELOG.md](CHANGELOG.md).
 
 ## Stack
@@ -32,7 +34,7 @@ npm run dev:client   # http://localhost:5173
 
 - [x] Project scaffold
 - [x] Solo canvas: freehand drawing in one tab
-- [ ] Deploy client to Vercel
+- [x] Deploy client to Vercel
 - [ ] Rooms and live sync between tabs
 - [ ] Late join: new users see full history
 - [ ] Deploy server to Render (first shareable version)
