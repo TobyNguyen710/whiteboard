@@ -1,75 +1,56 @@
 import { useEffect, useRef } from "react";
-import type { Point, Stroke } from "@whiteboard/shared";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, type Point, type Stroke } from "@whiteboard/shared";
+import { fitBoard, isOnBoard, screenToBoard, type Viewport } from "./board";
+import { drawDot, drawLatestSegment, drawStroke, drawStrokeTail } from "./render";
 
 const DEFAULT_COLOR = "#1e1e1e";
 const DEFAULT_SIZE = 4;
+const BOARD_COLOR = "#ffffff";
 
 // Local stand-in until the server assigns IDs.
 const LOCAL_USER_ID = crypto.randomUUID();
 
-function applyStrokeStyle(ctx: CanvasRenderingContext2D, stroke: Stroke) {
-  ctx.strokeStyle = stroke.color;
-  ctx.fillStyle = stroke.color;
-  ctx.lineWidth = stroke.size;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-}
-
-function drawDot(ctx: CanvasRenderingContext2D, stroke: Stroke, p: Point) {
-  applyStrokeStyle(ctx, stroke);
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, stroke.size / 2, 0, Math.PI * 2);
-  ctx.fill();
-}
-
-function drawSegment(ctx: CanvasRenderingContext2D, stroke: Stroke, from: Point, to: Point) {
-  applyStrokeStyle(ctx, stroke);
-  ctx.beginPath();
-  ctx.moveTo(from.x, from.y);
-  ctx.lineTo(to.x, to.y);
-  ctx.stroke();
-}
-
-function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
-  const [first, ...rest] = stroke.points;
-  if (!first) return;
-  if (rest.length === 0) {
-    drawDot(ctx, stroke, first);
-    return;
-  }
-  applyStrokeStyle(ctx, stroke);
-  ctx.beginPath();
-  ctx.moveTo(first.x, first.y);
-  for (const p of rest) ctx.lineTo(p.x, p.y);
-  ctx.stroke();
-}
-
 export function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const viewportRef = useRef<Viewport>({ scale: 1, offsetX: 0, offsetY: 0 });
   const strokesRef = useRef<Stroke[]>([]);
   // Active strokes keyed by pointerId, so multi-touch draws several lines at once.
   const activeRef = useRef(new Map<number, Stroke>());
 
   const getContext = () => canvasRef.current?.getContext("2d") ?? null;
 
-  const toPoint = (e: { clientX: number; clientY: number }): Point => {
+  const toBoardPoint = (e: { clientX: number; clientY: number }): Point => {
     const rect = canvasRef.current!.getBoundingClientRect();
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    return screenToBoard(viewportRef.current, e.clientX - rect.left, e.clientY - rect.top);
   };
 
-  // Match the backing store to the element size (sharp on high-DPI screens) and redraw.
+  // Size the backing store to the element (sharp on high-DPI screens), fit the board, and redraw.
+  // After this, the context draws in logical board coordinates, clipped to the board.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
       const { width, height } = canvas.getBoundingClientRect();
+      if (width === 0 || height === 0) return;
+
+      const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      const viewport = fitBoard(width, height);
+      viewportRef.current = viewport;
+      const k = dpr * viewport.scale;
+      ctx.setTransform(k, 0, 0, k, dpr * viewport.offsetX, dpr * viewport.offsetY);
+
+      ctx.fillStyle = BOARD_COLOR;
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.beginPath();
+      ctx.rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      ctx.clip();
+
       for (const stroke of strokesRef.current) drawStroke(ctx, stroke);
     };
 
@@ -81,9 +62,10 @@ export function Canvas() {
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
+    const point = toBoardPoint(e);
+    if (!isOnBoard(point)) return;
     e.currentTarget.setPointerCapture(e.pointerId);
 
-    const point = toPoint(e);
     const stroke: Stroke = {
       id: crypto.randomUUID(),
       userId: LOCAL_USER_ID,
@@ -109,15 +91,18 @@ export function Canvas() {
     const samples = events.length > 0 ? events : [e.nativeEvent];
 
     for (const sample of samples) {
-      const point = toPoint(sample);
-      const prev = stroke.points[stroke.points.length - 1];
-      stroke.points.push(point);
-      if (prev) drawSegment(ctx, stroke, prev, point);
+      stroke.points.push(toBoardPoint(sample));
+      drawLatestSegment(ctx, stroke);
     }
   };
 
   const endStroke = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const stroke = activeRef.current.get(e.pointerId);
+    if (!stroke) return;
     activeRef.current.delete(e.pointerId);
+
+    const ctx = getContext();
+    if (ctx) drawStrokeTail(ctx, stroke);
   };
 
   return (

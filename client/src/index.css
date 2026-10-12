@@ -7,7 +7,8 @@ body,
 
 body {
   overflow: hidden;
-  background: #ffffff;
+  /* Shows around the board when the window's shape doesn't match 16:9. */
+  background: #e8e8ec;
 }
 
 .board {
