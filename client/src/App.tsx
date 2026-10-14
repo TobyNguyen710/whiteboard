@@ -6,11 +6,11 @@ import { useRoomConnection } from "./useRoomConnection";
 
 export function App() {
   const [roomId] = useState(getOrCreateRoomId);
-  const status = useRoomConnection(roomId);
+  const { status, socket } = useRoomConnection(roomId);
 
   return (
     <>
-      <Canvas />
+      <Canvas socket={socket} />
       <RoomBadge roomId={roomId} status={status} />
     </>
   );

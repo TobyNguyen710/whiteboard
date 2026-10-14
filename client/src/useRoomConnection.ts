@@ -4,29 +4,38 @@ import { getServerUrl, type BoardSocket } from "./socket";
 
 export type ConnectionStatus = "connecting" | "connected" | "offline";
 
+export type RoomConnection = {
+  status: ConnectionStatus;
+  /** Null while no server is configured or before the first render's effect runs. */
+  socket: BoardSocket | null;
+};
+
 /** Connect to the server and join the room. Rejoins automatically after a reconnect. */
-export function useRoomConnection(roomId: string): ConnectionStatus {
+export function useRoomConnection(roomId: string): RoomConnection {
   const [status, setStatus] = useState<ConnectionStatus>(() =>
     getServerUrl() ? "connecting" : "offline",
   );
+  const [socket, setSocket] = useState<BoardSocket | null>(null);
 
   useEffect(() => {
     const url = getServerUrl();
     if (!url) return;
 
-    const socket: BoardSocket = io(url);
+    const s: BoardSocket = io(url);
+    setSocket(s);
 
     // "connect" also fires after every reconnect, so the join is repeated each time.
-    socket.on("connect", () => {
+    s.on("connect", () => {
       setStatus("connected");
-      socket.emit("room:join", { roomId });
+      s.emit("room:join", { roomId });
     });
-    socket.on("disconnect", () => setStatus("connecting"));
+    s.on("disconnect", () => setStatus("connecting"));
 
     return () => {
-      socket.disconnect();
+      s.disconnect();
+      setSocket(null);
     };
   }, [roomId]);
 
-  return status;
+  return { status, socket };
 }

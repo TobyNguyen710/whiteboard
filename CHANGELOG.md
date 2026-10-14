@@ -17,3 +17,4 @@
 - Server keeps each board's strokes in memory and relays strokes to everyone else on the board.
 - Server validates every incoming stroke event; only a stroke's author can add to it.
 - Empty boards are kept for 10 minutes, then deleted.
+- Live sync: strokes are sent as you draw (points batched every 25 ms or 32 points) and other people's strokes appear in real time.
