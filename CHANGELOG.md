@@ -14,3 +14,6 @@
 - Client connects to the server over Socket.IO and joins the board's room (rejoins after reconnect).
 - Connection badge with status, room ID, and a "Copy link" button.
 - "Join" (accepts a board ID or a pasted link) and "New board" buttons.
+- Server keeps each board's strokes in memory and relays strokes to everyone else on the board.
+- Server validates every incoming stroke event; only a stroke's author can add to it.
+- Empty boards are kept for 10 minutes, then deleted.
