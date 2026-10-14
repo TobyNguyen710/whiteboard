@@ -35,6 +35,10 @@ body {
   color: #1e1e1e;
 }
 
+.room-badge .user-count {
+  color: #6b6b75;
+}
+
 .room-badge .room-id {
   font-family: ui-monospace, monospace;
   color: #6b6b75;

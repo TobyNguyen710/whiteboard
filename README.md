@@ -36,7 +36,7 @@ npm run dev:client   # http://localhost:5173
 - [x] Solo canvas: freehand drawing in one tab
 - [x] Deploy client to Vercel
 - [x] Rooms and live sync between tabs
-- [ ] Late join: new users see full history
+- [x] Late join: new users see full history
 - [ ] Deploy server to Render (first shareable version)
 - [ ] Tools: colors, brush sizes, eraser, clear
 - [ ] Quality: Vitest tests, GitHub Actions CI

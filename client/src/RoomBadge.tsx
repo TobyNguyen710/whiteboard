@@ -8,14 +8,14 @@ const STATUS_LABELS: Record<ConnectionStatus, string> = {
   offline: "Offline",
 };
 
-type Props = { roomId: string; status: ConnectionStatus };
+type Props = { roomId: string; status: ConnectionStatus; userCount: number | null };
 
 // Switching boards is a full page load so the canvas and connection start fresh.
 function goToBoard(roomId: string) {
   window.location.assign(boardPath(roomId));
 }
 
-export function RoomBadge({ roomId, status }: Props) {
+export function RoomBadge({ roomId, status, userCount }: Props) {
   const [copied, setCopied] = useState(false);
   const [joining, setJoining] = useState(false);
   const [joinValue, setJoinValue] = useState("");
@@ -55,7 +55,12 @@ export function RoomBadge({ roomId, status }: Props) {
   return (
     <div className="room-badge">
       <span className={`status-dot status-${status}`} aria-hidden="true" />
-      <span>{STATUS_LABELS[status]}</span>
+      <span>
+        {STATUS_LABELS[status]}
+        {status === "connected" && userCount !== null && (
+          <span className="user-count"> · {userCount} online</span>
+        )}
+      </span>
       <span className="room-id">{roomId}</span>
 
       {joining ? (

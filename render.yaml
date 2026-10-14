@@ -1,0 +1,17 @@
+# Render Blueprint for the Socket.IO server. The client is deployed separately on Vercel.
+services:
+  - type: web
+    name: whiteboard-server
+    runtime: node
+    plan: free
+    # --include=dev: TypeScript is a dev dependency and is needed to build.
+    buildCommand: npm ci --include=dev && npm run build -w server
+    startCommand: npm start -w server
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Comma-separated list of sites allowed to connect.
+      - key: CLIENT_ORIGIN
+        value: https://whiteboard-ochre-five.vercel.app

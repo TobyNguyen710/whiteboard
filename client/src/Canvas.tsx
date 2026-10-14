@@ -20,6 +20,13 @@ const LOCAL_USER_ID = crypto.randomUUID();
 
 type Props = { socket: BoardSocket | null };
 
+/** Fill the board and draw every stroke. Assumes the context is already in board coordinates. */
+function paintBoard(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
+  ctx.fillStyle = BOARD_COLOR;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  for (const stroke of strokes) drawStroke(ctx, stroke);
+}
+
 export function Canvas({ socket }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<Viewport>({ scale: 1, offsetX: 0, offsetY: 0 });
@@ -27,11 +34,16 @@ export function Canvas({ socket }: Props) {
   const strokesRef = useRef<Stroke[]>([]);
   // Active local strokes keyed by pointerId, so multi-touch draws several lines at once.
   const activeRef = useRef(new Map<number, Stroke>());
-  // Other people's in-progress strokes, keyed by stroke ID.
-  const remoteRef = useRef(new Map<string, Stroke>());
+  /** Same strokes as strokesRef, by ID, so incoming points find their stroke. */
+  const strokesByIdRef = useRef(new Map<string, Stroke>());
   const batcherRef = useRef<PointBatcher | null>(null);
 
   const getContext = () => canvasRef.current?.getContext("2d") ?? null;
+
+  const addStroke = (stroke: Stroke) => {
+    strokesRef.current.push(stroke);
+    strokesByIdRef.current.set(stroke.id, stroke);
+  };
 
   const toBoardPoint = (e: { clientX: number; clientY: number }): Point => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -58,14 +70,11 @@ export function Canvas({ socket }: Props) {
       viewportRef.current = viewport;
       const k = dpr * viewport.scale;
       ctx.setTransform(k, 0, 0, k, dpr * viewport.offsetX, dpr * viewport.offsetY);
-
-      ctx.fillStyle = BOARD_COLOR;
-      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       ctx.beginPath();
       ctx.rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       ctx.clip();
 
-      for (const stroke of strokesRef.current) drawStroke(ctx, stroke);
+      paintBoard(ctx, strokesRef.current);
     };
 
     resize();
@@ -74,7 +83,8 @@ export function Canvas({ socket }: Props) {
     return () => observer.disconnect();
   }, []);
 
-  // Send local points in batches, and draw other people's strokes as they arrive.
+  // Load the board's history on join, send local points in batches, and draw other people's
+  // strokes as they arrive.
   useEffect(() => {
     if (!socket) return;
 
@@ -82,7 +92,17 @@ export function Canvas({ socket }: Props) {
       if (socket.connected) socket.emit("stroke:points", { strokeId, points });
     });
     batcherRef.current = batcher;
-    const remote = remoteRef.current;
+
+    // Sent on every (re)join. The server's history replaces ours, except strokes this tab is
+    // drawing right now, which stay on top.
+    const onState: ServerToClientEvents["room:state"] = ({ strokes }) => {
+      const serverIds = new Set(strokes.map((s) => s.id));
+      const drawing = [...activeRef.current.values()].filter((s) => !serverIds.has(s.id));
+      strokesRef.current = [...strokes, ...drawing];
+      strokesByIdRef.current = new Map(strokesRef.current.map((s) => [s.id, s]));
+      const ctx = getContext();
+      if (ctx) paintBoard(ctx, strokesRef.current);
+    };
 
     const onStart: ServerToClientEvents["stroke:start"] = (p) => {
       const stroke: Stroke = {
@@ -93,14 +113,14 @@ export function Canvas({ socket }: Props) {
         tool: p.tool,
         points: [p.point],
       };
-      remote.set(stroke.id, stroke);
-      strokesRef.current.push(stroke);
+      addStroke(stroke);
       const ctx = getContext();
       if (ctx) drawDot(ctx, stroke, p.point);
     };
 
+    // Looks strokes up among all strokes, so ones still in progress when we joined keep growing.
     const onPoints: ServerToClientEvents["stroke:points"] = (p) => {
-      const stroke = remote.get(p.strokeId);
+      const stroke = strokesByIdRef.current.get(p.strokeId);
       const ctx = getContext();
       if (!stroke || !ctx) return;
       for (const point of p.points) {
@@ -110,24 +130,23 @@ export function Canvas({ socket }: Props) {
     };
 
     const onEnd: ServerToClientEvents["stroke:end"] = (p) => {
-      const stroke = remote.get(p.strokeId);
-      if (!stroke) return;
-      remote.delete(p.strokeId);
+      const stroke = strokesByIdRef.current.get(p.strokeId);
       const ctx = getContext();
-      if (ctx) drawStrokeTail(ctx, stroke);
+      if (stroke && ctx) drawStrokeTail(ctx, stroke);
     };
 
+    socket.on("room:state", onState);
     socket.on("stroke:start", onStart);
     socket.on("stroke:points", onPoints);
     socket.on("stroke:end", onEnd);
 
     return () => {
+      socket.off("room:state", onState);
       socket.off("stroke:start", onStart);
       socket.off("stroke:points", onPoints);
       socket.off("stroke:end", onEnd);
       batcher.dispose();
       batcherRef.current = null;
-      remote.clear();
     };
   }, [socket]);
 
@@ -146,7 +165,7 @@ export function Canvas({ socket }: Props) {
       points: [point],
     };
     activeRef.current.set(e.pointerId, stroke);
-    strokesRef.current.push(stroke);
+    addStroke(stroke);
 
     const ctx = getContext();
     if (ctx) drawDot(ctx, stroke, point);

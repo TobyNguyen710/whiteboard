@@ -18,3 +18,6 @@
 - Server validates every incoming stroke event; only a stroke's author can add to it.
 - Empty boards are kept for 10 minutes, then deleted.
 - Live sync: strokes are sent as you draw (points batched every 25 ms or 32 points) and other people's strokes appear in real time.
+- Late join: new arrivals get the board's full history, and strokes still being drawn keep growing.
+- "N online" count in the badge, updated as people join and leave.
+- Server health check (`/health`), multiple allowed client origins, and a Render blueprint (`render.yaml`).
