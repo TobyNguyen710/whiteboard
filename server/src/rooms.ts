@@ -96,6 +96,16 @@ export class RoomStore {
     return true;
   }
 
+  /** Wipe a board's history, including strokes still being drawn. Only someone on the board can. */
+  clear(roomId: string, userId: string): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.users.has(userId)) return false;
+    room.strokes = [];
+    room.strokesById.clear();
+    room.activeStrokeIds.clear();
+    return true;
+  }
+
   /** Delete boards that have been empty longer than the TTL. Returns the deleted IDs. */
   sweep(): string[] {
     const cutoff = this.now() - EMPTY_ROOM_TTL_MS;

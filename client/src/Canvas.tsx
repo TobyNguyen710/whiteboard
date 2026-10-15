@@ -5,20 +5,21 @@ import {
   type Point,
   type ServerToClientEvents,
   type Stroke,
+  type Tool,
 } from "@whiteboard/shared";
 import { fitBoard, isOnBoard, screenToBoard, type Viewport } from "./board";
 import { PointBatcher } from "./pointBatcher";
-import { drawDot, drawLatestSegment, drawStroke, drawStrokeTail } from "./render";
+import { BOARD_COLOR, drawDot, drawLatestSegment, drawStroke, drawStrokeTail } from "./render";
 import type { BoardSocket } from "./socket";
 
-const BOARD_COLOR = "#ffffff";
 
 // Local stand-in; the server tags strokes with the real user ID when relaying them.
 const LOCAL_USER_ID = crypto.randomUUID();
 
 type Props = {
   socket: BoardSocket | null;
-  /** Color and brush size for new strokes. */
+  /** Tool, color, and brush size for new strokes. */
+  tool: Tool;
   color: string;
   size: number;
 };
@@ -30,7 +31,7 @@ function paintBoard(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
   for (const stroke of strokes) drawStroke(ctx, stroke);
 }
 
-export function Canvas({ socket, color, size }: Props) {
+export function Canvas({ socket, tool, color, size }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<Viewport>({ scale: 1, offsetX: 0, offsetY: 0 });
   /** Every stroke on the board (local and remote) in drawing order, for redraws. */
@@ -138,13 +139,26 @@ export function Canvas({ socket, color, size }: Props) {
       if (stroke && ctx) drawStrokeTail(ctx, stroke);
     };
 
+    // Everyone, including whoever pressed Clear, wipes the board when the server confirms.
+    // Strokes mid-draw are dropped too: the server no longer knows them.
+    const onCleared: ServerToClientEvents["board:cleared"] = () => {
+      strokesRef.current = [];
+      strokesByIdRef.current = new Map();
+      activeRef.current.clear();
+      batcher.dispose();
+      const ctx = getContext();
+      if (ctx) paintBoard(ctx, []);
+    };
+
     socket.on("room:state", onState);
+    socket.on("board:cleared", onCleared);
     socket.on("stroke:start", onStart);
     socket.on("stroke:points", onPoints);
     socket.on("stroke:end", onEnd);
 
     return () => {
       socket.off("room:state", onState);
+      socket.off("board:cleared", onCleared);
       socket.off("stroke:start", onStart);
       socket.off("stroke:points", onPoints);
       socket.off("stroke:end", onEnd);
@@ -164,7 +178,7 @@ export function Canvas({ socket, color, size }: Props) {
       userId: LOCAL_USER_ID,
       color,
       size,
-      tool: "pen",
+      tool,
       points: [point],
     };
     activeRef.current.set(e.pointerId, stroke);

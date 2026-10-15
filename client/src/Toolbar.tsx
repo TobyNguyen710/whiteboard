@@ -1,18 +1,83 @@
+import { useState } from "react";
 import { COLORS, SIZES, type ToolSettings } from "./tools";
 
 type Props = {
   settings: ToolSettings;
   onChange: (settings: ToolSettings) => void;
+  /** Clear needs the server, so it is disabled while disconnected. */
+  canClear: boolean;
+  onClear: () => void;
 };
+
+const ERASER_DOT_COLOR = "#adb5bd";
 
 // Size dots are drawn at a fixed screen scale so the smallest stays visible and the largest fits.
 const dotDiameter = (size: number) => Math.min(4 + size * 0.6, 22);
 
-export function Toolbar({ settings, onChange }: Props) {
+function PenIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        d="M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19l-4 1z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function EraserIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        d="M8 20h12M5.5 14.5l8-8a2 2 0 012.8 0l2.2 2.2a2 2 0 010 2.8L10.8 19.2a2 2 0 01-1.4.6H8.6a2 2 0 01-1.4-.6l-1.7-1.7a2 2 0 010-3zM9 11l5 5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function Toolbar({ settings, onChange, canClear, onClear }: Props) {
+  const [confirmingClear, setConfirmingClear] = useState(false);
   const isPreset = (COLORS as readonly string[]).includes(settings.color);
+  const isPen = settings.tool === "pen";
+
+  // Picking a color means you want to draw, so it switches back to the pen.
+  const pickColor = (color: string) => onChange({ ...settings, tool: "pen", color });
 
   return (
     <div className="toolbar" role="toolbar" aria-label="Drawing tools">
+      <div className="tool-group" role="group" aria-label="Tool">
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Pen"
+          title="Pen"
+          aria-pressed={isPen}
+          onClick={() => onChange({ ...settings, tool: "pen" })}
+        >
+          <PenIcon />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Eraser"
+          title="Eraser"
+          aria-pressed={!isPen}
+          onClick={() => onChange({ ...settings, tool: "eraser" })}
+        >
+          <EraserIcon />
+        </button>
+      </div>
+
+      <div className="tool-divider" aria-hidden="true" />
+
       <div className="tool-group" role="group" aria-label="Color">
         {COLORS.map((color) => (
           <button
@@ -21,13 +86,13 @@ export function Toolbar({ settings, onChange }: Props) {
             className="swatch"
             style={{ background: color }}
             aria-label={`Color ${color}`}
-            aria-pressed={settings.color === color}
-            onClick={() => onChange({ ...settings, color })}
+            aria-pressed={isPen && settings.color === color}
+            onClick={() => pickColor(color)}
           />
         ))}
         <label
           className="swatch custom-color"
-          aria-pressed={!isPreset}
+          aria-pressed={isPen && !isPreset}
           title="Custom color"
           style={isPreset ? undefined : { background: settings.color }}
         >
@@ -35,7 +100,7 @@ export function Toolbar({ settings, onChange }: Props) {
             type="color"
             aria-label="Custom color"
             value={settings.color}
-            onChange={(e) => onChange({ ...settings, color: e.target.value })}
+            onChange={(e) => pickColor(e.target.value)}
           />
         </label>
       </div>
@@ -57,11 +122,49 @@ export function Toolbar({ settings, onChange }: Props) {
               style={{
                 width: dotDiameter(size),
                 height: dotDiameter(size),
-                background: settings.color,
+                background: isPen ? settings.color : ERASER_DOT_COLOR,
               }}
             />
           </button>
         ))}
+      </div>
+
+      <div className="tool-divider" aria-hidden="true" />
+
+      <div className="tool-group">
+        {confirmingClear ? (
+          <>
+            <span className="clear-prompt">Clear for everyone?</span>
+            <button
+              type="button"
+              className="text-button danger"
+              disabled={!canClear}
+              onClick={() => {
+                onClear();
+                setConfirmingClear(false);
+              }}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setConfirmingClear(false)}
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="text-button"
+            disabled={!canClear}
+            title={canClear ? "Clear the board for everyone" : "Connect to clear the board"}
+            onClick={() => setConfirmingClear(true)}
+          >
+            Clear board
+          </button>
+        )}
       </div>
     </div>
   );

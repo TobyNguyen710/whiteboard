@@ -4,11 +4,15 @@ import type { Point, Stroke } from "@whiteboard/shared";
 // passes through the midpoints between neighbours. drawStroke (full redraw) and the incremental
 // drawLatestSegment + drawStrokeTail produce exactly the same path.
 
+export const BOARD_COLOR = "#ffffff";
+
 const mid = (a: Point, b: Point): Point => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 function applyStrokeStyle(ctx: CanvasRenderingContext2D, stroke: Stroke) {
-  ctx.strokeStyle = stroke.color;
-  ctx.fillStyle = stroke.color;
+  // The eraser paints the board color, so it replays in order like any other stroke.
+  const color = stroke.tool === "eraser" ? BOARD_COLOR : stroke.color;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
   ctx.lineWidth = stroke.size;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";

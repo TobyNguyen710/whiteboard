@@ -94,6 +94,15 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("stroke:end", payload);
   });
 
+  // Anyone on the board can clear it (v1). The client asks for confirmation first.
+  socket.on("board:clear", (payload) => {
+    const roomId = socket.data.roomId;
+    if (!roomId || payload?.roomId !== roomId) return;
+    if (!rooms.clear(roomId, userId)) return;
+    io.to(roomId).emit("board:cleared", {});
+    console.log(`${userId} cleared ${roomId}`);
+  });
+
   socket.on("disconnect", () => {
     const roomId = socket.data.roomId;
     if (roomId) {

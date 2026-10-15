@@ -1,3 +1,5 @@
+import type { Tool } from "@whiteboard/shared";
+
 export const COLORS = [
   "#1e1e1e", // black
   "#e03131", // red
@@ -12,9 +14,9 @@ export const COLORS = [
 /** Brush sizes in logical board pixels. */
 export const SIZES = [2, 4, 8, 16, 32] as const;
 
-export type ToolSettings = { color: string; size: number };
+export type ToolSettings = { tool: Tool; color: string; size: number };
 
-export const DEFAULT_SETTINGS: ToolSettings = { color: COLORS[0], size: SIZES[1] };
+export const DEFAULT_SETTINGS: ToolSettings = { tool: "pen", color: COLORS[0], size: SIZES[1] };
 
 const STORAGE_KEY = "whiteboard:tool-settings";
 const COLOR_PATTERN = /^#[0-9a-f]{6}$/i;
@@ -24,8 +26,9 @@ export function loadSettings(): ToolSettings {
   try {
     const saved: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     if (typeof saved !== "object" || saved === null) return DEFAULT_SETTINGS;
-    const { color, size } = saved as Record<string, unknown>;
+    const { tool, color, size } = saved as Record<string, unknown>;
     return {
+      tool: tool === "pen" || tool === "eraser" ? tool : DEFAULT_SETTINGS.tool,
       color: typeof color === "string" && COLOR_PATTERN.test(color) ? color : DEFAULT_SETTINGS.color,
       size: SIZES.includes(size as (typeof SIZES)[number]) ? (size as number) : DEFAULT_SETTINGS.size,
     };

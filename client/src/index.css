@@ -166,6 +166,61 @@ body {
   border-radius: 50%;
 }
 
+.icon-button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #1e1e1e;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  background: #f4f4f7;
+}
+
+.icon-button[aria-pressed="true"] {
+  background: #1e1e1e;
+  color: #ffffff;
+}
+
+.text-button {
+  border: none;
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: #f4f4f7;
+  color: #1e1e1e;
+  font: 13px/1.2 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.text-button:hover:not(:disabled) {
+  background: #e8e8ec;
+}
+
+.text-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.text-button.danger {
+  background: #d0342c;
+  color: #ffffff;
+}
+
+.text-button.danger:hover:not(:disabled) {
+  background: #b02a23;
+}
+
+.clear-prompt {
+  font: 13px/1.2 system-ui, sans-serif;
+  color: #1e1e1e;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;

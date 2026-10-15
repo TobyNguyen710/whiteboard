@@ -22,3 +22,5 @@
 - "N online" count in the badge, updated as people join and leave.
 - Server health check (`/health`), multiple allowed client origins, and a Render blueprint (`render.yaml`).
 - Toolbar with 8 preset colors, a custom color picker, and 5 brush sizes; the choice is remembered per device.
+- Eraser tool (paints the board color; syncs and replays like any stroke). Picking a color switches back to the pen.
+- "Clear board" for everyone, with a confirm step; the server wipes the board's history.
