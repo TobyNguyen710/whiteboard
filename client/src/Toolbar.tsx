@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { COLORS, SIZES, type ToolSettings } from "./tools";
+import { MAX_BRUSH_SIZE, MIN_BRUSH_SIZE } from "@whiteboard/shared";
+import { clampSize, COLORS, SIZES, type ToolSettings } from "./tools";
 
 type Props = {
   settings: ToolSettings;
@@ -127,6 +128,24 @@ export function Toolbar({ settings, onChange, canClear, onClear }: Props) {
             />
           </button>
         ))}
+        <input
+          type="range"
+          className="size-slider"
+          aria-label="Brush size"
+          min={MIN_BRUSH_SIZE}
+          max={MAX_BRUSH_SIZE}
+          step={1}
+          value={settings.size}
+          style={
+            {
+              "--fill": `${((settings.size - MIN_BRUSH_SIZE) / (MAX_BRUSH_SIZE - MIN_BRUSH_SIZE)) * 100}%`,
+            } as React.CSSProperties
+          }
+          onChange={(e) => onChange({ ...settings, size: clampSize(Number(e.target.value)) })}
+        />
+        <span className="size-value" aria-hidden="true">
+          {settings.size}
+        </span>
       </div>
 
       <div className="tool-divider" aria-hidden="true" />

@@ -25,3 +25,4 @@
 - Eraser tool (paints the board color; syncs and replays like any stroke). Picking a color switches back to the pen.
 - "Clear board" for everyone, with a confirm step; the server wipes the board's history.
 - Brush preview under the mouse/pen showing the exact brush size, color, and eraser.
+- Custom brush size: a 1–100 slider next to the quick-pick sizes. Limits are shared by client and server; the server now rejects non-integer or out-of-range sizes.

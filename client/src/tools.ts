@@ -1,4 +1,4 @@
-import type { Tool } from "@whiteboard/shared";
+import { MAX_BRUSH_SIZE, MIN_BRUSH_SIZE, type Tool } from "@whiteboard/shared";
 
 export const COLORS = [
   "#1e1e1e", // black
@@ -11,8 +11,13 @@ export const COLORS = [
   "#868e96", // grey
 ] as const;
 
-/** Brush sizes in logical board pixels. */
+/** Quick-pick brush sizes in logical board pixels. Any whole size in the allowed range works. */
 export const SIZES = [2, 4, 8, 16, 32] as const;
+
+/** Round and keep a size within the range the server accepts. */
+export function clampSize(size: number): number {
+  return Math.min(MAX_BRUSH_SIZE, Math.max(MIN_BRUSH_SIZE, Math.round(size)));
+}
 
 export type ToolSettings = { tool: Tool; color: string; size: number };
 
@@ -30,7 +35,7 @@ export function loadSettings(): ToolSettings {
     return {
       tool: tool === "pen" || tool === "eraser" ? tool : DEFAULT_SETTINGS.tool,
       color: typeof color === "string" && COLOR_PATTERN.test(color) ? color : DEFAULT_SETTINGS.color,
-      size: SIZES.includes(size as (typeof SIZES)[number]) ? (size as number) : DEFAULT_SETTINGS.size,
+      size: typeof size === "number" && Number.isFinite(size) ? clampSize(size) : DEFAULT_SETTINGS.size,
     };
   } catch {
     return DEFAULT_SETTINGS;

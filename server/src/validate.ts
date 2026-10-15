@@ -1,15 +1,15 @@
-import type {
-  Point,
-  StrokeEndPayload,
-  StrokePointsPayload,
-  StrokeStartPayload,
-  Tool,
+import {
+  MAX_BRUSH_SIZE,
+  MIN_BRUSH_SIZE,
+  type Point,
+  type StrokeEndPayload,
+  type StrokePointsPayload,
+  type StrokeStartPayload,
+  type Tool,
 } from "@whiteboard/shared";
 
 // Everything arriving over the socket is untrusted: these return a clean copy, or null if invalid.
 
-export const MIN_BRUSH_SIZE = 1;
-export const MAX_BRUSH_SIZE = 200;
 export const MAX_POINTS_PER_BATCH = 1000;
 const MAX_COORDINATE = 10_000;
 const MAX_STROKE_ID_LENGTH = 64;
@@ -28,6 +28,9 @@ const isStrokeId = (v: unknown): v is string =>
 
 const isTool = (v: unknown): v is Tool => TOOLS.includes(v as Tool);
 
+const isBrushSize = (v: unknown): v is number =>
+  Number.isInteger(v) && (v as number) >= MIN_BRUSH_SIZE && (v as number) <= MAX_BRUSH_SIZE;
+
 function parsePoint(v: unknown): Point | null {
   if (!isObject(v) || !isCoordinate(v.x) || !isCoordinate(v.y)) return null;
   return { x: v.x, y: v.y };
@@ -36,9 +39,7 @@ function parsePoint(v: unknown): Point | null {
 export function parseStrokeStart(v: unknown): StrokeStartPayload | null {
   if (!isObject(v) || !isStrokeId(v.strokeId) || !isTool(v.tool)) return null;
   if (typeof v.color !== "string" || !COLOR_PATTERN.test(v.color)) return null;
-  if (typeof v.size !== "number" || !(v.size >= MIN_BRUSH_SIZE && v.size <= MAX_BRUSH_SIZE)) {
-    return null;
-  }
+  if (!isBrushSize(v.size)) return null;
   const point = parsePoint(v.point);
   if (!point) return null;
   return { strokeId: v.strokeId, color: v.color, size: v.size, tool: v.tool, point };
