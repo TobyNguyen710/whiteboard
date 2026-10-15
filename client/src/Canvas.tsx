@@ -11,14 +11,17 @@ import { PointBatcher } from "./pointBatcher";
 import { drawDot, drawLatestSegment, drawStroke, drawStrokeTail } from "./render";
 import type { BoardSocket } from "./socket";
 
-const DEFAULT_COLOR = "#1e1e1e";
-const DEFAULT_SIZE = 4;
 const BOARD_COLOR = "#ffffff";
 
 // Local stand-in; the server tags strokes with the real user ID when relaying them.
 const LOCAL_USER_ID = crypto.randomUUID();
 
-type Props = { socket: BoardSocket | null };
+type Props = {
+  socket: BoardSocket | null;
+  /** Color and brush size for new strokes. */
+  color: string;
+  size: number;
+};
 
 /** Fill the board and draw every stroke. Assumes the context is already in board coordinates. */
 function paintBoard(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
@@ -27,7 +30,7 @@ function paintBoard(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
   for (const stroke of strokes) drawStroke(ctx, stroke);
 }
 
-export function Canvas({ socket }: Props) {
+export function Canvas({ socket, color, size }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<Viewport>({ scale: 1, offsetX: 0, offsetY: 0 });
   /** Every stroke on the board (local and remote) in drawing order, for redraws. */
@@ -159,8 +162,8 @@ export function Canvas({ socket }: Props) {
     const stroke: Stroke = {
       id: crypto.randomUUID(),
       userId: LOCAL_USER_ID,
-      color: DEFAULT_COLOR,
-      size: DEFAULT_SIZE,
+      color,
+      size,
       tool: "pen",
       points: [point],
     };

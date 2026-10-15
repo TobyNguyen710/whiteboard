@@ -21,3 +21,4 @@
 - Late join: new arrivals get the board's full history, and strokes still being drawn keep growing.
 - "N online" count in the badge, updated as people join and leave.
 - Server health check (`/health`), multiple allowed client origins, and a Render blueprint (`render.yaml`).
+- Toolbar with 8 preset colors, a custom color picker, and 5 brush sizes; the choice is remembered per device.

@@ -87,6 +87,85 @@ body {
   padding-right: 6px;
 }
 
+.toolbar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 8px 12px;
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
+}
+
+.tool-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-divider {
+  width: 1px;
+  align-self: stretch;
+  background: #e2e2e8;
+}
+
+.swatch,
+.size-button {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.swatch {
+  box-shadow: inset 0 0 0 2px #ffffff;
+}
+
+.swatch[aria-pressed="true"],
+.size-button[aria-pressed="true"] {
+  border-color: #1e1e1e;
+}
+
+.custom-color {
+  display: inline-block;
+  background: conic-gradient(#e03131, #f08c00, #fab005, #2f9e44, #1971c2, #7048e8, #e64980, #e03131);
+}
+
+/* Invisible native picker stretched over the swatch so clicking it opens the color dialog. */
+.custom-color input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.size-button {
+  display: grid;
+  place-items: center;
+  background: #f4f4f7;
+}
+
+.size-dot {
+  display: block;
+  border-radius: 50%;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
