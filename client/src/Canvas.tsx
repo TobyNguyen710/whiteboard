@@ -13,6 +13,9 @@ import { BOARD_COLOR, drawDot, drawLatestSegment, drawStroke, drawStrokeTail } f
 import type { BoardSocket } from "./socket";
 
 
+/** Smallest brush preview on screen, so tiny brushes on a zoomed-out board stay visible. */
+const MIN_CURSOR_DIAMETER = 4;
+
 // Local stand-in; the server tags strokes with the real user ID when relaying them.
 const LOCAL_USER_ID = crypto.randomUUID();
 
@@ -33,6 +36,9 @@ function paintBoard(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
 
 export function Canvas({ socket, tool, color, size }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const cursorRef = useRef<HTMLDivElement>(null);
+  /** Last hovering mouse/pen position (client px), so the preview can follow brush changes too. */
+  const hoverRef = useRef<{ x: number; y: number } | null>(null);
   const viewportRef = useRef<Viewport>({ scale: 1, offsetX: 0, offsetY: 0 });
   /** Every stroke on the board (local and remote) in drawing order, for redraws. */
   const strokesRef = useRef<Stroke[]>([]);
@@ -167,7 +173,44 @@ export function Canvas({ socket, tool, color, size }: Props) {
     };
   }, [socket]);
 
+  // Brush preview: a circle the size the brush will draw, positioned directly via the DOM so it
+  // doesn't re-render React on every mouse move. Hidden for touch (no hover) and off the board.
+  const updateBrushCursor = () => {
+    const cursor = cursorRef.current;
+    const canvas = canvasRef.current;
+    if (!cursor || !canvas) return;
+
+    const hover = hoverRef.current;
+    const onBoard = hover !== null && isOnBoard(toBoardPoint({ clientX: hover.x, clientY: hover.y }));
+    cursor.hidden = !onBoard;
+    canvas.style.cursor = onBoard ? "none" : "";
+    if (!hover || !onBoard) return;
+
+    const diameter = Math.max(size * viewportRef.current.scale, MIN_CURSOR_DIAMETER);
+    const isEraser = tool === "eraser";
+    cursor.style.width = `${diameter}px`;
+    cursor.style.height = `${diameter}px`;
+    cursor.style.transform = `translate(${hover.x - diameter / 2}px, ${hover.y - diameter / 2}px)`;
+    cursor.classList.toggle("eraser", isEraser);
+    cursor.style.borderColor = isEraser ? "" : color;
+    cursor.style.backgroundColor = isEraser ? "" : `${color}26`; // ~15% opacity
+  };
+
+  // Re-style the preview when the brush changes while the mouse is still.
+  useEffect(updateBrushCursor, [tool, color, size]);
+
+  const trackHover = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    hoverRef.current = e.pointerType === "touch" ? null : { x: e.clientX, y: e.clientY };
+    updateBrushCursor();
+  };
+
+  const handlePointerLeave = () => {
+    hoverRef.current = null;
+    updateBrushCursor();
+  };
+
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    trackHover(e);
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const point = toBoardPoint(e);
     if (!isOnBoard(point)) return;
@@ -199,6 +242,7 @@ export function Canvas({ socket, tool, color, size }: Props) {
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    trackHover(e);
     const stroke = activeRef.current.get(e.pointerId);
     const ctx = getContext();
     if (!stroke || !ctx) return;
@@ -229,14 +273,18 @@ export function Canvas({ socket, tool, color, size }: Props) {
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      className="board"
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={endStroke}
-      onPointerCancel={endStroke}
-      onLostPointerCapture={endStroke}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        className="board"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endStroke}
+        onPointerCancel={endStroke}
+        onLostPointerCapture={endStroke}
+        onPointerLeave={handlePointerLeave}
+      />
+      <div ref={cursorRef} className="brush-cursor" hidden aria-hidden="true" />
+    </>
   );
 }

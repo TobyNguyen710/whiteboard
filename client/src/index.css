@@ -20,6 +20,25 @@ body {
   touch-action: none;
 }
 
+/* Brush preview that follows the mouse. Color and size are set from Canvas.tsx. */
+.brush-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  border: 1.5px solid #1e1e1e;
+  border-radius: 50%;
+  /* White halo keeps light colors visible on the white board. */
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.9);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.brush-cursor.eraser {
+  border-color: #868e96;
+  background: rgb(255 255 255 / 0.85);
+}
+
 .room-badge {
   position: fixed;
   top: calc(12px + env(safe-area-inset-top, 0px));

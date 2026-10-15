@@ -24,3 +24,4 @@
 - Toolbar with 8 preset colors, a custom color picker, and 5 brush sizes; the choice is remembered per device.
 - Eraser tool (paints the board color; syncs and replays like any stroke). Picking a color switches back to the pen.
 - "Clear board" for everyone, with a confirm step; the server wipes the board's history.
+- Brush preview under the mouse/pen showing the exact brush size, color, and eraser.
