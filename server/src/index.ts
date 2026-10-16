@@ -94,6 +94,21 @@ io.on("connection", (socket) => {
     socket.to(roomId).emit("stroke:end", payload);
   });
 
+  // Undo/redo only touch your own strokes; everyone (including you) is told what changed.
+  socket.on("stroke:undo", () => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const strokeId = rooms.undo(roomId, userId);
+    if (strokeId) io.to(roomId).emit("stroke:removed", { strokeId });
+  });
+
+  socket.on("stroke:redo", () => {
+    const roomId = socket.data.roomId;
+    if (!roomId) return;
+    const restored = rooms.redo(roomId, userId);
+    if (restored) io.to(roomId).emit("stroke:restored", restored);
+  });
+
   // Anyone on the board can clear it (v1). The client asks for confirmation first.
   socket.on("board:clear", (payload) => {
     const roomId = socket.data.roomId;

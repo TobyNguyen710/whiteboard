@@ -5,8 +5,10 @@ import { clampSize, COLORS, SIZES, type ToolSettings } from "./tools";
 type Props = {
   settings: ToolSettings;
   onChange: (settings: ToolSettings) => void;
-  /** Clear needs the server, so it is disabled while disconnected. */
-  canClear: boolean;
+  /** Undo, redo, and clear go through the server, so they are disabled while disconnected. */
+  connected: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onClear: () => void;
 };
 
@@ -44,7 +46,37 @@ function EraserIcon() {
   );
 }
 
-export function Toolbar({ settings, onChange, canClear, onClear }: Props) {
+function UndoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        d="M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 010 11H11"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function RedoIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        d="M15 14l5-5-5-5M20 9H9.5a5.5 5.5 0 000 11H13"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function Toolbar({ settings, onChange, connected, onUndo, onRedo, onClear }: Props) {
   const [confirmingClear, setConfirmingClear] = useState(false);
   const isPreset = (COLORS as readonly string[]).includes(settings.color);
   const isPen = settings.tool === "pen";
@@ -54,6 +86,31 @@ export function Toolbar({ settings, onChange, canClear, onClear }: Props) {
 
   return (
     <div className="toolbar" role="toolbar" aria-label="Drawing tools">
+      <div className="tool-group" role="group" aria-label="History">
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Undo"
+          title="Undo (Ctrl+Z)"
+          disabled={!connected}
+          onClick={onUndo}
+        >
+          <UndoIcon />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Redo"
+          title="Redo (Ctrl+Y)"
+          disabled={!connected}
+          onClick={onRedo}
+        >
+          <RedoIcon />
+        </button>
+      </div>
+
+      <div className="tool-divider" aria-hidden="true" />
+
       <div className="tool-group" role="group" aria-label="Tool">
         <button
           type="button"
@@ -157,7 +214,7 @@ export function Toolbar({ settings, onChange, canClear, onClear }: Props) {
             <button
               type="button"
               className="text-button danger"
-              disabled={!canClear}
+              disabled={!connected}
               onClick={() => {
                 onClear();
                 setConfirmingClear(false);
@@ -177,8 +234,8 @@ export function Toolbar({ settings, onChange, canClear, onClear }: Props) {
           <button
             type="button"
             className="text-button"
-            disabled={!canClear}
-            title={canClear ? "Clear the board for everyone" : "Connect to clear the board"}
+            disabled={!connected}
+            title={connected ? "Clear the board for everyone" : "Connect to clear the board"}
             onClick={() => setConfirmingClear(true)}
           >
             Clear board

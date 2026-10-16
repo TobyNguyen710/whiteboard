@@ -13,8 +13,17 @@ export type Room = {
   /** IDs of strokes still being drawn. */
   activeStrokeIds: Set<string>;
   strokesById: Map<string, Stroke>;
+  /** Drawing-order position of every stroke on the board or waiting to be redone. */
+  seqById: Map<string, number>;
+  nextSeq: number;
+  /** Per user: IDs of their strokes, oldest first, that Ctrl+Z can remove. */
+  undoStacks: Map<string, string[]>;
+  /** Per user: their undone strokes, most recent last, that Ctrl+Y can bring back. */
+  redoStacks: Map<string, Stroke[]>;
   emptySince: number | null;
 };
+
+export type RestoredStroke = { stroke: Stroke; afterId: string | null };
 
 /** In-memory boards. Holds no socket code so the logic can be tested on its own. */
 export class RoomStore {
@@ -39,6 +48,10 @@ export class RoomStore {
         users: new Set(),
         activeStrokeIds: new Set(),
         strokesById: new Map(),
+        seqById: new Map(),
+        nextSeq: 0,
+        undoStacks: new Map(),
+        redoStacks: new Map(),
         emptySince: null,
       };
       this.rooms.set(roomId, room);
@@ -56,13 +69,16 @@ export class RoomStore {
     for (const strokeId of room.activeStrokeIds) {
       if (room.strokesById.get(strokeId)?.userId === userId) room.activeStrokeIds.delete(strokeId);
     }
+    // User IDs are per connection, so this user's undo history can never be used again.
+    room.undoStacks.delete(userId);
+    this.dropRedoStack(room, userId);
     if (room.users.size === 0) room.emptySince = this.now();
   }
 
   startStroke(roomId: string, userId: string, payload: StrokeStartPayload): Stroke | null {
     const room = this.rooms.get(roomId);
     if (!room || !room.users.has(userId)) return null;
-    if (room.strokesById.has(payload.strokeId)) return null;
+    if (room.strokesById.has(payload.strokeId) || room.seqById.has(payload.strokeId)) return null;
     if (room.strokes.length >= MAX_STROKES_PER_ROOM) return null;
 
     const stroke: Stroke = {
@@ -76,6 +92,11 @@ export class RoomStore {
     room.strokes.push(stroke);
     room.strokesById.set(stroke.id, stroke);
     room.activeStrokeIds.add(stroke.id);
+    room.seqById.set(stroke.id, room.nextSeq++);
+
+    // A new stroke starts a new branch of history: what you undid can't be redone anymore.
+    this.stackFor(room.undoStacks, userId).push(stroke.id);
+    this.dropRedoStack(room, userId);
     return stroke;
   }
 
@@ -96,6 +117,46 @@ export class RoomStore {
     return true;
   }
 
+  /** Remove the user's most recent stroke still on the board. Returns its ID, or null if nothing to undo. */
+  undo(roomId: string, userId: string): string | null {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.users.has(userId)) return null;
+
+    const undoStack = room.undoStacks.get(userId) ?? [];
+    while (undoStack.length > 0) {
+      const strokeId = undoStack.pop()!;
+      const stroke = room.strokesById.get(strokeId);
+      if (!stroke) continue; // already gone (e.g. cleared)
+
+      // Undoing mid-stroke ends it; any points still arriving for it are ignored.
+      room.activeStrokeIds.delete(strokeId);
+      room.strokesById.delete(strokeId);
+      room.strokes.splice(room.strokes.indexOf(stroke), 1);
+      this.stackFor(room.redoStacks, userId).push(stroke);
+      return strokeId;
+    }
+    return null;
+  }
+
+  /** Put the user's most recently undone stroke back in its original drawing position. */
+  redo(roomId: string, userId: string): RestoredStroke | null {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.users.has(userId)) return null;
+    if (room.strokes.length >= MAX_STROKES_PER_ROOM) return null;
+
+    const stroke = room.redoStacks.get(userId)?.pop();
+    if (!stroke) return null;
+
+    const seq = room.seqById.get(stroke.id)!;
+    let index = room.strokes.length;
+    while (index > 0 && room.seqById.get(room.strokes[index - 1]!.id)! > seq) index--;
+
+    room.strokes.splice(index, 0, stroke);
+    room.strokesById.set(stroke.id, stroke);
+    this.stackFor(room.undoStacks, userId).push(stroke.id);
+    return { stroke, afterId: index > 0 ? room.strokes[index - 1]!.id : null };
+  }
+
   /** Wipe a board's history, including strokes still being drawn. Only someone on the board can. */
   clear(roomId: string, userId: string): boolean {
     const room = this.rooms.get(roomId);
@@ -103,6 +164,10 @@ export class RoomStore {
     room.strokes = [];
     room.strokesById.clear();
     room.activeStrokeIds.clear();
+    room.seqById.clear();
+    // Clearing resets everyone's undo/redo: there is nothing left to step back through.
+    room.undoStacks.clear();
+    room.redoStacks.clear();
     return true;
   }
 
@@ -124,5 +189,20 @@ export class RoomStore {
     if (!room || !room.activeStrokeIds.has(strokeId)) return null;
     const stroke = room.strokesById.get(strokeId);
     return stroke?.userId === userId ? stroke : null;
+  }
+
+  private stackFor<T>(stacks: Map<string, T[]>, userId: string): T[] {
+    let stack = stacks.get(userId);
+    if (!stack) {
+      stack = [];
+      stacks.set(userId, stack);
+    }
+    return stack;
+  }
+
+  /** Forget a user's undone strokes for good. */
+  private dropRedoStack(room: Room, userId: string): void {
+    for (const stroke of room.redoStacks.get(userId) ?? []) room.seqById.delete(stroke.id);
+    room.redoStacks.delete(userId);
   }
 }

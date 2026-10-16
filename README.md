@@ -39,5 +39,6 @@ npm run dev:client   # http://localhost:5173
 - [x] Late join: new users see full history
 - [x] Deploy server to Render (first shareable version)
 - [x] Tools: colors, brush sizes, eraser, clear
+- [x] Undo / redo (Ctrl+Z, Ctrl+Y) for your own strokes
 - [ ] Quality: Vitest tests, GitHub Actions CI
 - [ ] v1.0.0 release: README with GIF and live link

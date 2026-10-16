@@ -262,8 +262,13 @@ body {
   cursor: pointer;
 }
 
-.icon-button:hover {
+.icon-button:hover:not(:disabled) {
   background: #f4f4f7;
+}
+
+.icon-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 .icon-button[aria-pressed="true"] {

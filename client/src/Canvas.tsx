@@ -156,8 +156,35 @@ export function Canvas({ socket, tool, color, size }: Props) {
       if (ctx) paintBoard(ctx, []);
     };
 
+    // Undo: drop the stroke and repaint (strokes drawn after it may overlap it, so a full repaint
+    // is the simple, correct option). If it's the one we're drawing right now, stop drawing it.
+    const onRemoved: ServerToClientEvents["stroke:removed"] = ({ strokeId }) => {
+      if (!strokesByIdRef.current.delete(strokeId)) return;
+      strokesRef.current = strokesRef.current.filter((s) => s.id !== strokeId);
+      for (const [pointerId, s] of activeRef.current) {
+        if (s.id === strokeId) activeRef.current.delete(pointerId);
+      }
+      const ctx = getContext();
+      if (ctx) paintBoard(ctx, strokesRef.current);
+    };
+
+    // Redo: put the stroke back in its original place in the drawing order, so it layers
+    // correctly with strokes and eraser marks drawn after it.
+    const onRestored: ServerToClientEvents["stroke:restored"] = ({ stroke, afterId }) => {
+      if (strokesByIdRef.current.has(stroke.id)) return;
+      const list = strokesRef.current;
+      const afterIndex = afterId === null ? -1 : list.findIndex((s) => s.id === afterId);
+      const index = afterId !== null && afterIndex < 0 ? list.length : afterIndex + 1;
+      list.splice(index, 0, stroke);
+      strokesByIdRef.current.set(stroke.id, stroke);
+      const ctx = getContext();
+      if (ctx) paintBoard(ctx, list);
+    };
+
     socket.on("room:state", onState);
     socket.on("board:cleared", onCleared);
+    socket.on("stroke:removed", onRemoved);
+    socket.on("stroke:restored", onRestored);
     socket.on("stroke:start", onStart);
     socket.on("stroke:points", onPoints);
     socket.on("stroke:end", onEnd);
@@ -165,6 +192,8 @@ export function Canvas({ socket, tool, color, size }: Props) {
     return () => {
       socket.off("room:state", onState);
       socket.off("board:cleared", onCleared);
+      socket.off("stroke:removed", onRemoved);
+      socket.off("stroke:restored", onRestored);
       socket.off("stroke:start", onStart);
       socket.off("stroke:points", onPoints);
       socket.off("stroke:end", onEnd);
