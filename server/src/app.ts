@@ -1,0 +1,142 @@
+import { createServer, type Server as HttpServer } from "node:http";
+import { Server } from "socket.io";
+import {
+  isValidRoomId,
+  type ClientToServerEvents,
+  type ServerToClientEvents,
+} from "@whiteboard/shared";
+import { RoomStore } from "./rooms.js";
+import { parseStrokeEnd, parseStrokePoints, parseStrokeStart } from "./validate.js";
+
+type SocketData = { roomId?: string };
+
+export type WhiteboardIo = Server<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  Record<string, never>,
+  SocketData
+>;
+
+export type WhiteboardServerOptions = {
+  /** Sites allowed to connect (CORS). */
+  clientOrigins: string[];
+  /** Where to send log lines. Defaults to console.log; tests pass a no-op. */
+  log?: (message: string) => void;
+};
+
+export type WhiteboardServer = { httpServer: HttpServer; io: WhiteboardIo; rooms: RoomStore };
+
+/** Build the HTTP + Socket.IO server with all board logic wired up. Call httpServer.listen() to start. */
+export function createWhiteboardServer({
+  clientOrigins,
+  log = console.log,
+}: WhiteboardServerOptions): WhiteboardServer {
+  // Plain HTTP answers health checks (used by Render, and handy for waking a sleeping instance).
+  // Socket.IO handles its own /socket.io/ requests before this runs.
+  const httpServer = createServer((req, res) => {
+    if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
+      res.writeHead(200, { "content-type": "text/plain" });
+      res.end("ok");
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+
+  const io: WhiteboardIo = new Server(httpServer, { cors: { origin: clientOrigins } });
+  const rooms = new RoomStore();
+
+  const broadcastUserCount = (roomId: string) => {
+    const count = rooms.get(roomId)?.users.size ?? 0;
+    io.to(roomId).emit("room:users", { count });
+  };
+
+  io.on("connection", (socket) => {
+    // The socket ID doubles as the user ID for v1 (no accounts).
+    const userId = socket.id;
+    log(`connected: ${userId}`);
+
+    socket.on("room:join", (payload) => {
+      const roomId = payload?.roomId;
+      if (!isValidRoomId(roomId)) return;
+
+      // A socket is on one board at a time.
+      const previous = socket.data.roomId;
+      if (previous === roomId) return;
+      if (previous) {
+        rooms.leave(previous, userId);
+        void socket.leave(previous);
+        broadcastUserCount(previous);
+      }
+
+      const room = rooms.join(roomId, userId);
+      socket.data.roomId = roomId;
+      void socket.join(roomId);
+
+      // Late joiners catch up on the full history, including strokes still being drawn.
+      socket.emit("room:state", { strokes: room.strokes });
+      broadcastUserCount(roomId);
+      log(`${userId} joined ${roomId} (${room.users.size} on board)`);
+    });
+
+    socket.on("stroke:start", (raw) => {
+      const roomId = socket.data.roomId;
+      const payload = parseStrokeStart(raw);
+      if (!roomId || !payload) return;
+      if (!rooms.startStroke(roomId, userId, payload)) return;
+      socket.to(roomId).emit("stroke:start", { ...payload, userId });
+    });
+
+    socket.on("stroke:points", (raw) => {
+      const roomId = socket.data.roomId;
+      const payload = parseStrokePoints(raw);
+      if (!roomId || !payload) return;
+      const accepted = rooms.addPoints(roomId, userId, payload.strokeId, payload.points);
+      if (!accepted) return;
+      socket.to(roomId).emit("stroke:points", { strokeId: payload.strokeId, points: accepted });
+    });
+
+    socket.on("stroke:end", (raw) => {
+      const roomId = socket.data.roomId;
+      const payload = parseStrokeEnd(raw);
+      if (!roomId || !payload) return;
+      if (!rooms.endStroke(roomId, userId, payload.strokeId)) return;
+      socket.to(roomId).emit("stroke:end", payload);
+    });
+
+    // Undo/redo only touch your own strokes; everyone (including you) is told what changed.
+    socket.on("stroke:undo", () => {
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      const strokeId = rooms.undo(roomId, userId);
+      if (strokeId) io.to(roomId).emit("stroke:removed", { strokeId });
+    });
+
+    socket.on("stroke:redo", () => {
+      const roomId = socket.data.roomId;
+      if (!roomId) return;
+      const restored = rooms.redo(roomId, userId);
+      if (restored) io.to(roomId).emit("stroke:restored", restored);
+    });
+
+    // Anyone on the board can clear it (v1). The client asks for confirmation first.
+    socket.on("board:clear", (payload) => {
+      const roomId = socket.data.roomId;
+      if (!roomId || payload?.roomId !== roomId) return;
+      if (!rooms.clear(roomId, userId)) return;
+      io.to(roomId).emit("board:cleared", {});
+      log(`${userId} cleared ${roomId}`);
+    });
+
+    socket.on("disconnect", () => {
+      const roomId = socket.data.roomId;
+      if (roomId) {
+        rooms.leave(roomId, userId);
+        broadcastUserCount(roomId);
+      }
+      log(`disconnected: ${userId}`);
+    });
+  });
+
+  return { httpServer, io, rooms };
+}

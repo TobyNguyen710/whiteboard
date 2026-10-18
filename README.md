@@ -30,6 +30,16 @@ npm run dev:server   # http://localhost:3001
 npm run dev:client   # http://localhost:5173
 ```
 
+## Testing
+
+```bash
+npm test             # run all tests once (Vitest)
+npm run test:watch   # re-run tests as you edit
+npm run typecheck    # strict TypeScript, including test files
+```
+
+Unit tests cover the pure logic (board math, point batching, input validation, the room store with undo/redo). Integration tests in `server/src/app.test.ts` start a real server on a random port and drive it with real Socket.IO clients.
+
 ## v1 roadmap
 
 - [x] Project scaffold

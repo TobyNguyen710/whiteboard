@@ -26,4 +26,6 @@
 - "Clear board" for everyone, with a confirm step; the server wipes the board's history.
 - Brush preview under the mouse/pen showing the exact brush size, color, and eraser.
 - Undo / redo for your own strokes: Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z (Cmd on Mac), plus toolbar buttons. Synced for everyone; redone strokes return to their original drawing order. Drawing a new stroke clears your redo list, and clearing the board resets history.
+- Test suite (Vitest): unit tests for board math, point batching, validation, settings, and the room store (strokes, limits, undo/redo, clear, cleanup), plus integration tests against a real server with real Socket.IO clients. `npm test`, `npm run test:watch`; `npm run typecheck` now covers test files.
+- Server setup moved into `createWhiteboardServer()` so tests can start it on any port.
 - Custom brush size: a 1–100 slider next to the quick-pick sizes. Limits are shared by client and server; the server now rejects non-integer or out-of-range sizes.

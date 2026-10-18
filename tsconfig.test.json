@@ -1,0 +1,15 @@
+{
+  // Type-checks the test files, which are left out of each package's build.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "declaration": false,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "paths": {
+      "@whiteboard/shared": ["./shared/src/index.ts"]
+    }
+  },
+  "include": ["client/src/**/*.test.ts", "server/src/**/*.test.ts", "shared/src/**/*.test.ts", "vitest.config.ts"]
+}
