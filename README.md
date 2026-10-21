@@ -1,5 +1,7 @@
 # Whiteboard
 
+[![CI](https://github.com/TobyNguyen710/whiteboard/actions/workflows/ci.yml/badge.svg)](https://github.com/TobyNguyen710/whiteboard/actions/workflows/ci.yml)
+
 An all-in-one collaborative canvas: part Paint, part graph drawer, part Figma-lite. Open a board link and draw together in real time.
 
 **Live:** https://whiteboard-ochre-five.vercel.app
@@ -36,7 +38,10 @@ npm run dev:client   # http://localhost:5173
 npm test             # run all tests once (Vitest)
 npm run test:watch   # re-run tests as you edit
 npm run typecheck    # strict TypeScript, including test files
+npm run lint         # ESLint (likely bugs, React hook rules)
 ```
+
+GitHub Actions runs lint, typecheck, tests, and build on every push to `main` and on pull requests.
 
 Unit tests cover the pure logic (board math, point batching, input validation, the room store with undo/redo). Integration tests in `server/src/app.test.ts` start a real server on a random port and drive it with real Socket.IO clients.
 
@@ -50,5 +55,5 @@ Unit tests cover the pure logic (board math, point batching, input validation, t
 - [x] Deploy server to Render (first shareable version)
 - [x] Tools: colors, brush sizes, eraser, clear
 - [x] Undo / redo (Ctrl+Z, Ctrl+Y) for your own strokes
-- [ ] Quality: Vitest tests, GitHub Actions CI
+- [x] Quality: Vitest tests, ESLint, GitHub Actions CI
 - [ ] v1.0.0 release: README with GIF and live link

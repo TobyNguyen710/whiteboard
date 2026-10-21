@@ -28,4 +28,7 @@
 - Undo / redo for your own strokes: Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z (Cmd on Mac), plus toolbar buttons. Synced for everyone; redone strokes return to their original drawing order. Drawing a new stroke clears your redo list, and clearing the board resets history.
 - Test suite (Vitest): unit tests for board math, point batching, validation, settings, and the room store (strokes, limits, undo/redo, clear, cleanup), plus integration tests against a real server with real Socket.IO clients. `npm test`, `npm run test:watch`; `npm run typecheck` now covers test files.
 - Server setup moved into `createWhiteboardServer()` so tests can start it on any port.
+- ESLint (`npm run lint`) with TypeScript and React hooks rules.
+- GitHub Actions CI: lint, typecheck, tests, and build on every push to `main` and on pull requests.
+- The client creates its socket once and connects it in an effect, instead of storing a new socket in state (one less render; flagged by the React hooks linter).
 - Custom brush size: a 1–100 slider next to the quick-pick sizes. Limits are shared by client and server; the server now rejects non-integer or out-of-range sizes.

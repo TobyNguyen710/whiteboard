@@ -6,7 +6,7 @@ export type ConnectionStatus = "connecting" | "connected" | "offline";
 
 export type RoomConnection = {
   status: ConnectionStatus;
-  /** Null while no server is configured or before the first render's effect runs. */
+  /** Null when no server is configured for this build. */
   socket: BoardSocket | null;
   /** People on the board (including you), or null when not connected. */
   userCount: number | null;
@@ -14,36 +14,41 @@ export type RoomConnection = {
 
 /** Connect to the server and join the room. Rejoins automatically after a reconnect. */
 export function useRoomConnection(roomId: string): RoomConnection {
-  const [status, setStatus] = useState<ConnectionStatus>(() =>
-    getServerUrl() ? "connecting" : "offline",
-  );
-  const [socket, setSocket] = useState<BoardSocket | null>(null);
+  // Created once, not yet connected; the effect below connects and disconnects it.
+  const [socket] = useState<BoardSocket | null>(() => {
+    const url = getServerUrl();
+    return url ? io(url, { autoConnect: false }) : null;
+  });
+  const [status, setStatus] = useState<ConnectionStatus>(socket ? "connecting" : "offline");
   const [userCount, setUserCount] = useState<number | null>(null);
 
   useEffect(() => {
-    const url = getServerUrl();
-    if (!url) return;
-
-    const s: BoardSocket = io(url);
-    setSocket(s);
+    if (!socket) return;
 
     // "connect" also fires after every reconnect, so the join is repeated each time.
-    s.on("connect", () => {
+    const onConnect = () => {
       setStatus("connected");
-      s.emit("room:join", { roomId });
-    });
-    s.on("disconnect", () => {
+      socket.emit("room:join", { roomId });
+    };
+    const onDisconnect = () => {
       setStatus("connecting");
       setUserCount(null);
-    });
-    s.on("room:users", ({ count }) => setUserCount(count));
+    };
+    const onUsers = ({ count }: { count: number }) => setUserCount(count);
+
+    socket.on("connect", onConnect);
+    socket.on("disconnect", onDisconnect);
+    socket.on("room:users", onUsers);
+    socket.connect();
 
     return () => {
-      s.disconnect();
-      setSocket(null);
-      setUserCount(null);
+      // Disconnect first so onDisconnect resets the status, then stop listening.
+      socket.disconnect();
+      socket.off("connect", onConnect);
+      socket.off("disconnect", onDisconnect);
+      socket.off("room:users", onUsers);
     };
-  }, [roomId]);
+  }, [socket, roomId]);
 
   return { status, socket, userCount };
 }
