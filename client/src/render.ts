@@ -1,4 +1,4 @@
-import type { Point, Stroke } from "@whiteboard/shared";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, type Point, type Stroke } from "@whiteboard/shared";
 
 // Strokes are smoothed with quadratic curves: each point is a control point and the curve
 // passes through the midpoints between neighbours. drawStroke (full redraw) and the incremental
@@ -83,4 +83,23 @@ export function drawStrokeTail(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   ctx.moveTo(start.x, start.y);
   ctx.lineTo(last.x, last.y);
   ctx.stroke();
+}
+
+/** Fill the board and draw every stroke. Assumes the context is already in board coordinates. */
+export function paintBoard(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
+  ctx.fillStyle = BOARD_COLOR;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  for (const stroke of strokes) drawStroke(ctx, stroke);
+}
+
+/** Small JPEG of the whole board (for dashboard cards), drawn from the strokes, not the screen. */
+export function renderThumbnail(strokes: Stroke[], width = 320): string {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = Math.round((width * CANVAS_HEIGHT) / CANVAS_WIDTH);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return "";
+  ctx.scale(width / CANVAS_WIDTH, width / CANVAS_WIDTH);
+  paintBoard(ctx, strokes);
+  return canvas.toDataURL("image/jpeg", 0.7);
 }

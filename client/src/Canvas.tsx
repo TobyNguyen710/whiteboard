@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
@@ -9,9 +9,14 @@ import {
 } from "@whiteboard/shared";
 import { fitBoard, isOnBoard, screenToBoard, type Viewport } from "./board";
 import { PointBatcher } from "./pointBatcher";
-import { BOARD_COLOR, drawDot, drawLatestSegment, drawStroke, drawStrokeTail } from "./render";
+import {
+  drawDot,
+  drawLatestSegment,
+  drawStrokeTail,
+  paintBoard,
+  renderThumbnail,
+} from "./render";
 import type { BoardSocket } from "./socket";
-
 
 /** Smallest brush preview on screen, so tiny brushes on a zoomed-out board stay visible. */
 const MIN_CURSOR_DIAMETER = 4;
@@ -27,14 +32,16 @@ type Props = {
   size: number;
 };
 
-/** Fill the board and draw every stroke. Assumes the context is already in board coordinates. */
-function paintBoard(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
-  ctx.fillStyle = BOARD_COLOR;
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  for (const stroke of strokes) drawStroke(ctx, stroke);
-}
+/** What the board page can ask the canvas for. */
+export type CanvasHandle = {
+  /**
+   * Small JPEG data URL of the current board, for the dashboard. Null if the board is empty;
+   * undefined if it's unknown because the board's history hasn't loaded yet.
+   */
+  getThumbnail: () => string | null | undefined;
+};
 
-export function Canvas({ socket, tool, color, size }: Props) {
+export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({ socket, tool, color, size }, ref) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cursorRef = useRef<HTMLDivElement>(null);
   /** Last hovering mouse/pen position (client px), so the preview can follow brush changes too. */
@@ -49,6 +56,21 @@ export function Canvas({ socket, tool, color, size }: Props) {
   const batcherRef = useRef<PointBatcher | null>(null);
 
   const getContext = () => canvasRef.current?.getContext("2d") ?? null;
+
+  /** True once the server's history has arrived (or anything was drawn), so "empty" is real. */
+  const loadedRef = useRef(false);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getThumbnail: () => {
+        const strokes = strokesRef.current;
+        if (strokes.length > 0) return renderThumbnail(strokes);
+        return loadedRef.current ? null : undefined;
+      },
+    }),
+    [],
+  );
 
   const addStroke = (stroke: Stroke) => {
     strokesRef.current.push(stroke);
@@ -106,6 +128,7 @@ export function Canvas({ socket, tool, color, size }: Props) {
     // Sent on every (re)join. The server's history replaces ours, except strokes this tab is
     // drawing right now, which stay on top.
     const onState: ServerToClientEvents["room:state"] = ({ strokes }) => {
+      loadedRef.current = true;
       const serverIds = new Set(strokes.map((s) => s.id));
       const drawing = [...activeRef.current.values()].filter((s) => !serverIds.has(s.id));
       strokesRef.current = [...strokes, ...drawing];
@@ -316,4 +339,4 @@ export function Canvas({ socket, tool, color, size }: Props) {
       <div ref={cursorRef} className="brush-cursor" hidden aria-hidden="true" />
     </>
   );
-}
+});

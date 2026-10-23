@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+### Added
+- Home page: start a new board, join one by link or ID, and see your recent boards with thumbnails, names, and when you last opened them. Rename or remove boards from the list. (Stored in this browser for now; accounts come later in v2.)
+- Board page top bar: back to home, click-to-rename board name, connection status with "N online", and a Share button that copies the link.
+- Routing with React Router: `/` is the home page and `/board/:id` is a board; unknown or invalid links go home.
+
+### Changed
+- Opening the site no longer jumps straight into a new board; the floating board badge is replaced by the top bar and home page.
+
 ## [1.0.0] - 2026-10-21
 
 First release: live, shared freehand drawing.

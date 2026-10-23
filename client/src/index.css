@@ -1,3 +1,14 @@
+:root {
+  --ink: #1e1e1e;
+  --muted: #6b6b75;
+  --line: #e2e2e8;
+  --surface: #ffffff;
+  --page: #f5f5f7;
+  --danger: #d0342c;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ink);
+}
+
 html,
 body,
 #root {
@@ -6,8 +17,151 @@ body,
 }
 
 body {
+  background: var(--page);
+}
+
+/* Visually hidden but read by screen readers. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  /* Shows around the board when the window's shape doesn't match 16:9. */
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  text-decoration: none;
+  font-weight: 650;
+  font-size: 17px;
+}
+
+/* ---------- Board page ---------- */
+
+.board-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.board-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 52px;
+  padding: env(safe-area-inset-top, 0px) 12px 0;
+  box-sizing: content-box;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.topbar-left,
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topbar-back {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--ink);
+}
+
+.topbar-back:hover {
+  background: var(--page);
+}
+
+.board-name,
+.board-name-input {
+  min-width: 0;
+  max-width: 40vw;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-family: inherit;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.board-name {
+  cursor: text;
+}
+
+.board-name:hover {
+  border-color: var(--line);
+}
+
+.board-name-input {
+  width: 16em;
+  border-color: var(--ink);
+  outline: none;
+  background: var(--surface);
+}
+
+.connection {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.connection .user-count {
+  color: var(--muted);
+}
+
+.share-button {
+  border: none;
+  border-radius: 999px;
+  padding: 7px 16px;
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.share-button:hover {
+  background: #3a3a40;
+}
+
+/* Hide the status text on narrow screens; the dot stays. */
+@media (max-width: 520px) {
+  .connection {
+    font-size: 0;
+  }
+  .connection .status-dot {
+    font-size: initial;
+  }
+}
+
+.board-area {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  /* Shows around the board when the area's shape doesn't match 16:9. */
   background: #e8e8ec;
 }
 
@@ -37,73 +191,6 @@ body {
 .brush-cursor.eraser {
   border-color: #868e96;
   background: rgb(255 255 255 / 0.85);
-}
-
-.room-badge {
-  position: fixed;
-  top: calc(12px + env(safe-area-inset-top, 0px));
-  left: 12px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 6px 6px 12px;
-  border-radius: 999px;
-  background: #ffffff;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.15);
-  font: 13px/1.2 system-ui, sans-serif;
-  color: #1e1e1e;
-}
-
-.room-badge .user-count {
-  color: #6b6b75;
-}
-
-.room-badge .room-id {
-  font-family: ui-monospace, monospace;
-  color: #6b6b75;
-}
-
-.room-badge button {
-  border: none;
-  border-radius: 999px;
-  padding: 4px 10px;
-  background: #1e1e1e;
-  color: #ffffff;
-  font: inherit;
-  cursor: pointer;
-}
-
-.room-badge button.secondary {
-  background: #ececf0;
-  color: #1e1e1e;
-}
-
-.join-form {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.join-form input {
-  width: 14em;
-  padding: 4px 10px;
-  border: 1px solid #c8c8d0;
-  border-radius: 999px;
-  font: inherit;
-  outline: none;
-}
-
-.join-form input:focus {
-  border-color: #1e1e1e;
-}
-
-.join-form input[aria-invalid="true"] {
-  border-color: #d0342c;
-}
-
-.join-error {
-  color: #d0342c;
-  padding-right: 6px;
 }
 
 .toolbar {

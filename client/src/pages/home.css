@@ -1,0 +1,305 @@
+/* Home / dashboard page. Shared tokens (--ink, --muted, ...) live in index.css. */
+
+.home {
+  min-height: 100%;
+}
+
+.home-header {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  height: 60px;
+  padding: env(safe-area-inset-top, 0px) clamp(16px, 4vw, 40px) 0;
+  box-sizing: content-box;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.home-main {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 32px clamp(16px, 4vw, 40px) 64px;
+}
+
+/* ---------- Start cards ---------- */
+
+.home-start {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 40px;
+}
+
+.start-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+}
+
+.start-new {
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.start-new:hover {
+  background: #3a3a40;
+}
+
+.start-new:focus-visible {
+  outline: 3px solid #1971c2;
+  outline-offset: 2px;
+}
+
+.start-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgb(255 255 255 / 0.15);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.start-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.start-text {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.start-new .start-text {
+  color: rgb(255 255 255 / 0.7);
+}
+
+.join-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.join-input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid #c8c8d0;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+}
+
+.join-input:focus {
+  border-color: var(--ink);
+}
+
+.join-input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.join-button {
+  padding: 9px 18px;
+  border: none;
+  border-radius: 10px;
+  background: var(--ink);
+  color: #ffffff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.join-button:hover {
+  background: #3a3a40;
+}
+
+.join-error {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+/* ---------- Recent boards ---------- */
+
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.section-head h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.section-hint {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
+}
+
+.board-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.board-card:hover,
+.board-card:focus-within {
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.08);
+  transform: translateY(-1px);
+}
+
+.board-card-thumb {
+  display: block;
+  aspect-ratio: 16 / 9;
+  max-width: 100%;
+  background: #ffffff;
+  border-bottom: 1px solid var(--line);
+}
+
+.board-card-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Dotted-grid placeholder for boards without a thumbnail yet. */
+.thumb-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background-image: radial-gradient(#d4d4dc 1px, transparent 1px);
+  background-size: 14px 14px;
+}
+
+.board-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px 14px;
+  min-width: 0;
+}
+
+.board-card-name {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.board-card-name:hover {
+  text-decoration: underline;
+}
+
+.board-card-meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.board-card-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  border: 1px solid var(--ink);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+}
+
+/* Rename / remove buttons appear over the thumbnail on hover or keyboard focus. */
+.board-card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.board-card:hover .board-card-actions,
+.board-card:focus-within .board-card-actions {
+  opacity: 1;
+}
+
+/* Touch screens have no hover: always show the buttons. */
+@media (hover: none) {
+  .board-card-actions {
+    opacity: 1;
+  }
+}
+
+.card-action {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgb(255 255 255 / 0.95);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.card-action:hover {
+  background: var(--page);
+}
+
+.empty-state {
+  padding: 48px 16px;
+  border: 1px dashed #c8c8d0;
+  border-radius: 14px;
+  text-align: center;
+  color: var(--ink);
+}
+
+.empty-state p {
+  margin: 0;
+}
+
+.empty-hint {
+  margin-top: 6px !important;
+  font-size: 14px;
+  color: var(--muted);
+}
