@@ -42,7 +42,8 @@ I wanted to understand how tools like Figma and Excalidraw keep everyone's view 
 |---|---|
 | Language | TypeScript (strict) |
 | Client | React + Vite, HTML canvas with Pointer Events |
-| Server | Node + Socket.IO (boards in memory) |
+| Server | Node + Socket.IO |
+| Database | Supabase Postgres (saved boards) |
 | Tests | Vitest (unit + integration with real sockets) |
 | CI | GitHub Actions: lint, typecheck, test, build |
 | Hosting | Vercel (client), Render (server) |
@@ -55,7 +56,7 @@ shared/   Shared TypeScript types (socket events, Stroke, limits)
 
 ## Getting started
 
-Requires Node 20+.
+Requires Node 22+.
 
 ```bash
 npm install
@@ -63,6 +64,8 @@ npm run build -w shared
 npm run dev:server   # http://localhost:3001
 npm run dev:client   # http://localhost:5173
 ```
+
+Boards are kept in memory unless the server has Supabase settings. To save boards locally, create a Supabase project, run `supabase/migrations/*.sql` in its SQL editor, and copy `server/.env.example` to `server/.env` with your project URL and secret key.
 
 ## Testing
 
@@ -78,7 +81,8 @@ Unit tests cover the pure logic (board math, point batching, input validation, t
 ## Deploying
 
 - **Client (Vercel):** import the repo with the root directory left at the repo root; `vercel.json` sets the build. Set `VITE_SERVER_URL` to the server's URL.
-- **Server (Render):** create a Blueprint from the repo; `render.yaml` sets the build, start command, health check, and `CLIENT_ORIGIN` (comma-separated list of allowed sites).
+- **Server (Render):** create a Blueprint from the repo; `render.yaml` sets the build, start command, health check, and `CLIENT_ORIGIN` (comma-separated list of allowed sites). Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in the Render dashboard.
+- **Database (Supabase):** run the SQL files in `supabase/migrations/` in order. The `keepalive` workflow pings `/health/db` twice a week so the free project doesn't pause.
 
 ## Roadmap
 
@@ -91,6 +95,5 @@ Unit tests cover the pure logic (board math, point batching, input validation, t
 
 ## Known limits (v1)
 
-- Boards live in server memory: a server restart or redeploy clears them.
 - Undo history is per connection: refreshing the page resets it (your strokes stay).
 - Anyone on a board can clear it.

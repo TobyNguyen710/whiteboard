@@ -2,6 +2,7 @@ import {
   MAX_BRUSH_SIZE,
   MIN_BRUSH_SIZE,
   type Point,
+  type Stroke,
   type StrokeEndPayload,
   type StrokePointsPayload,
   type StrokeStartPayload,
@@ -31,9 +32,12 @@ const isTool = (v: unknown): v is Tool => TOOLS.includes(v as Tool);
 const isBrushSize = (v: unknown): v is number =>
   Number.isInteger(v) && (v as number) >= MIN_BRUSH_SIZE && (v as number) <= MAX_BRUSH_SIZE;
 
+/** Round to 0.1 board px: invisible on screen, and keeps stored boards and messages small. */
+const round = (n: number) => Math.round(n * 10) / 10;
+
 function parsePoint(v: unknown): Point | null {
   if (!isObject(v) || !isCoordinate(v.x) || !isCoordinate(v.y)) return null;
-  return { x: v.x, y: v.y };
+  return { x: round(v.x), y: round(v.y) };
 }
 
 export function parseStrokeStart(v: unknown): StrokeStartPayload | null {
@@ -61,4 +65,32 @@ export function parseStrokePoints(v: unknown): StrokePointsPayload | null {
 export function parseStrokeEnd(v: unknown): StrokeEndPayload | null {
   if (!isObject(v) || !isStrokeId(v.strokeId)) return null;
   return { strokeId: v.strokeId };
+}
+
+/**
+ * Strokes loaded from the database. Our own data, but checked anyway so a bad row can't crash
+ * the server or reach clients: invalid strokes are dropped, the rest are kept.
+ */
+export function parseStoredStrokes(v: unknown): Stroke[] {
+  if (!Array.isArray(v)) return [];
+  const strokes: Stroke[] = [];
+  const seen = new Set<string>();
+  for (const raw of v) {
+    if (!isObject(raw) || !isStrokeId(raw.id) || seen.has(raw.id)) continue;
+    if (typeof raw.userId !== "string" || !isTool(raw.tool) || !isBrushSize(raw.size)) continue;
+    if (typeof raw.color !== "string" || !COLOR_PATTERN.test(raw.color)) continue;
+    if (!Array.isArray(raw.points) || raw.points.length === 0) continue;
+    const points = raw.points.map(parsePoint);
+    if (points.some((p) => p === null)) continue;
+    seen.add(raw.id);
+    strokes.push({
+      id: raw.id,
+      userId: raw.userId,
+      color: raw.color,
+      size: raw.size,
+      tool: raw.tool,
+      points: points as Point[],
+    });
+  }
+  return strokes;
 }

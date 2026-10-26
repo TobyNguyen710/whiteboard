@@ -8,6 +8,7 @@ import type {
   StrokeStartPayload,
 } from "@whiteboard/shared";
 import { createWhiteboardServer, type WhiteboardServer } from "./app.js";
+import { MemoryBoardStore } from "./persistence.js";
 
 type Client = Socket<ServerToClientEvents, ClientToServerEvents>;
 type EventName = keyof ServerToClientEvents;
@@ -17,11 +18,16 @@ const ORIGIN = "http://localhost:5173";
 let server: WhiteboardServer;
 let url: string;
 const clients: Client[] = [];
+const boardStore = new MemoryBoardStore();
+
+async function startServer(): Promise<{ server: WhiteboardServer; url: string }> {
+  const s = createWhiteboardServer({ clientOrigins: [ORIGIN], boardStore, log: () => {} });
+  await new Promise<void>((resolve) => s.httpServer.listen(0, resolve));
+  return { server: s, url: `http://localhost:${(s.httpServer.address() as AddressInfo).port}` };
+}
 
 beforeAll(async () => {
-  server = createWhiteboardServer({ clientOrigins: [ORIGIN], log: () => {} });
-  await new Promise<void>((resolve) => server.httpServer.listen(0, resolve));
-  url = `http://localhost:${(server.httpServer.address() as AddressInfo).port}`;
+  ({ server, url } = await startServer());
 });
 
 afterAll(async () => {
@@ -93,6 +99,11 @@ describe("HTTP", () => {
     const res = await fetch(`${url}/health`);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("ok");
+  });
+
+  it("checks the database on /health/db", async () => {
+    const res = await fetch(`${url}/health/db`);
+    expect(res.status).toBe(200);
   });
 
   it("returns 404 for other paths", async () => {
@@ -225,5 +236,32 @@ describe("clear", () => {
     b.emit("board:clear", { roomId: "someother1" });
     await settle();
     expect(a.received.filter(([e]) => e === "board:cleared")).toEqual([]);
+  });
+});
+
+describe("saved boards", () => {
+  it("keeps a board's drawing across a server restart", async () => {
+    const a = await connect();
+    a.emit("room:join", { roomId: "restart1234" });
+    await next(a, "room:state");
+    a.emit("stroke:start", startPayload("kept"));
+    a.emit("stroke:points", { strokeId: "kept", points: [{ x: 50.04, y: 60 }] });
+    a.emit("stroke:end", { strokeId: "kept" });
+    await settle();
+    await server.saver.flush();
+
+    // A brand-new server (like after a Render redeploy) using the same database.
+    const restarted = await startServer();
+    try {
+      const b = connectClient(restarted.url, { transports: ["websocket"], forceNew: true }) as Client;
+      clients.push(b);
+      const state = new Promise<Payload<"room:state">>((resolve) => b.once("room:state", resolve));
+      b.emit("room:join", { roomId: "restart1234" });
+      const { strokes } = await state;
+      expect(strokes.map((s) => s.id)).toEqual(["kept"]);
+      expect(strokes[0]!.points).toEqual([{ x: 10, y: 10 }, { x: 50, y: 60 }]);
+    } finally {
+      await restarted.server.io.close();
+    }
   });
 });

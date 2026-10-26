@@ -5,6 +5,7 @@ import {
   type ClientToServerEvents,
   type ServerToClientEvents,
 } from "@whiteboard/shared";
+import { BoardSaver, type BoardStore } from "./persistence.js";
 import { RoomStore } from "./rooms.js";
 import { parseStrokeEnd, parseStrokePoints, parseStrokeStart } from "./validate.js";
 
@@ -20,31 +21,53 @@ export type WhiteboardIo = Server<
 export type WhiteboardServerOptions = {
   /** Sites allowed to connect (CORS). */
   clientOrigins: string[];
+  /** Where boards are saved. Null keeps boards in memory only (lost on restart). */
+  boardStore?: BoardStore | null;
   /** Where to send log lines. Defaults to console.log; tests pass a no-op. */
   log?: (message: string) => void;
 };
 
-export type WhiteboardServer = { httpServer: HttpServer; io: WhiteboardIo; rooms: RoomStore };
+export type WhiteboardServer = {
+  httpServer: HttpServer;
+  io: WhiteboardIo;
+  rooms: RoomStore;
+  saver: BoardSaver;
+};
 
 /** Build the HTTP + Socket.IO server with all board logic wired up. Call httpServer.listen() to start. */
 export function createWhiteboardServer({
   clientOrigins,
+  boardStore = null,
   log = console.log,
 }: WhiteboardServerOptions): WhiteboardServer {
+  const rooms = new RoomStore();
+  const saver = new BoardSaver(boardStore, rooms, log);
+
   // Plain HTTP answers health checks (used by Render, and handy for waking a sleeping instance).
+  // /health/db also touches the database, which keeps a free Supabase project from pausing.
   // Socket.IO handles its own /socket.io/ requests before this runs.
   const httpServer = createServer((req, res) => {
-    if (req.method === "GET" && (req.url === "/" || req.url === "/health")) {
-      res.writeHead(200, { "content-type": "text/plain" });
-      res.end("ok");
+    const reply = (status: number, body: string) => {
+      res.writeHead(status, { "content-type": "text/plain" });
+      res.end(body);
+    };
+    if (req.method !== "GET") return reply(404, "");
+    if (req.url === "/" || req.url === "/health") return reply(200, "ok");
+    if (req.url === "/health/db") {
+      if (!boardStore) return reply(503, "no database configured");
+      boardStore.ping().then(
+        () => reply(200, "ok"),
+        (error: unknown) => {
+          log(`database health check failed: ${error instanceof Error ? error.message : String(error)}`);
+          reply(503, "database unreachable");
+        },
+      );
       return;
     }
-    res.writeHead(404);
-    res.end();
+    reply(404, "");
   });
 
   const io: WhiteboardIo = new Server(httpServer, { cors: { origin: clientOrigins } });
-  const rooms = new RoomStore();
 
   const broadcastUserCount = (roomId: string) => {
     const count = rooms.get(roomId)?.users.size ?? 0;
@@ -56,7 +79,7 @@ export function createWhiteboardServer({
     const userId = socket.id;
     log(`connected: ${userId}`);
 
-    socket.on("room:join", (payload) => {
+    socket.on("room:join", async (payload) => {
       const roomId = payload?.roomId;
       if (!isValidRoomId(roomId)) return;
 
@@ -69,8 +92,13 @@ export function createWhiteboardServer({
         broadcastUserCount(previous);
       }
 
-      const room = rooms.join(roomId, userId);
+      // Saved boards are loaded on first open. Strokes sent before this finishes are dropped
+      // (the user isn't on the board yet), which only affects the first moment after joining.
       socket.data.roomId = roomId;
+      await saver.ensureLoaded(roomId);
+      if (!socket.connected || socket.data.roomId !== roomId) return;
+
+      const room = rooms.join(roomId, userId);
       void socket.join(roomId);
 
       // Late joiners catch up on the full history, including strokes still being drawn.
@@ -138,5 +166,5 @@ export function createWhiteboardServer({
     });
   });
 
-  return { httpServer, io, rooms };
+  return { httpServer, io, rooms, saver };
 }

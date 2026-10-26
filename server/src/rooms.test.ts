@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { StrokeStartPayload } from "@whiteboard/shared";
 import {
   EMPTY_ROOM_TTL_MS,
+  MAX_POINTS_PER_ROOM,
   MAX_POINTS_PER_STROKE,
   MAX_STROKES_PER_ROOM,
   RoomStore,
@@ -163,6 +164,79 @@ describe("RoomStore", () => {
       store.join(ROOM, "alice");
       expect(store.redo(ROOM, "alice")).toBeNull();
       expect(store.undo(ROOM, "alice")).toBeNull();
+    });
+  });
+
+  describe("saved boards", () => {
+    const saved = (id: string, points = 1) => ({
+      id,
+      userId: "someone",
+      color: "#1e1e1e",
+      size: 4,
+      tool: "pen" as const,
+      points: Array.from({ length: points }, (_, i) => ({ x: i, y: i })),
+    });
+
+    it("creates a board from saved strokes, keeping their order for redo", () => {
+      store.create("saved1234", [saved("old1"), saved("old2")]);
+      store.join("saved1234", "alice");
+      store.startStroke("saved1234", "alice", start("new1"));
+      store.undo("saved1234", "alice");
+      expect(store.redo("saved1234", "alice")).toMatchObject({ afterId: "old2" });
+      expect(store.get("saved1234")!.strokes.map((s) => s.id)).toEqual(["old1", "old2", "new1"]);
+    });
+
+    it("counts points from saved strokes", () => {
+      expect(store.create("saved1234", [saved("a", 3), saved("b", 4)]).pointCount).toBe(7);
+    });
+
+    it("doesn't replace a board that's already in memory", () => {
+      store.startStroke(ROOM, "alice", start("s1"));
+      store.create(ROOM, []);
+      expect(ids(store)).toEqual(["s1"]);
+    });
+
+    it("bumps the revision on every change, not on joins", () => {
+      const room = store.get(ROOM)!;
+      const seen = [room.revision];
+      store.join(ROOM, "carol");
+      seen.push(room.revision);
+      store.startStroke(ROOM, "alice", start("s1"));
+      seen.push(room.revision);
+      store.addPoints(ROOM, "alice", "s1", [{ x: 1, y: 1 }]);
+      seen.push(room.revision);
+      store.undo(ROOM, "alice");
+      seen.push(room.revision);
+      store.redo(ROOM, "alice");
+      seen.push(room.revision);
+      store.clear(ROOM, "alice");
+      seen.push(room.revision);
+      expect(seen).toEqual([0, 0, 1, 2, 3, 4, 5]);
+    });
+
+    it("caps the total points on a board", () => {
+      store.create("big12345", [saved("huge", MAX_POINTS_PER_ROOM - 2)]);
+      store.join("big12345", "alice");
+      store.startStroke("big12345", "alice", start("s1")); // 1 point left after this
+      const accepted = store.addPoints("big12345", "alice", "s1", [
+        { x: 1, y: 1 },
+        { x: 2, y: 2 },
+      ]);
+      expect(accepted).toHaveLength(1);
+      expect(store.startStroke("big12345", "alice", start("s2"))).toBeNull();
+    });
+
+    it("tracks points through undo, redo, and clear", () => {
+      store.startStroke(ROOM, "alice", start("s1"));
+      store.addPoints(ROOM, "alice", "s1", [{ x: 1, y: 1 }]);
+      const room = store.get(ROOM)!;
+      expect(room.pointCount).toBe(2);
+      store.undo(ROOM, "alice");
+      expect(room.pointCount).toBe(0);
+      store.redo(ROOM, "alice");
+      expect(room.pointCount).toBe(2);
+      store.clear(ROOM, "alice");
+      expect(room.pointCount).toBe(0);
     });
   });
 

@@ -8,8 +8,14 @@ All notable changes to this project are documented here. Format based on [Keep a
 - Home page: start a new board, join one by link or ID, and see your recent boards with thumbnails, names, and when you last opened them. Rename or remove boards from the list. (Stored in this browser for now; accounts come later in v2.)
 - Board page top bar: back to home, click-to-rename board name, connection status with "N online", and a Share button that copies the link.
 - Routing with React Router: `/` is the home page and `/board/:id` is a board; unknown or invalid links go home.
+- Saved boards (Supabase Postgres): boards load from the database when first opened, changes are saved every 2 seconds and on shutdown, so drawings survive server restarts and redeploys. Without Supabase settings the server keeps boards in memory as before.
+- Safety: if a board can't be loaded, it's never saved over; idle boards are only unloaded once saved; boards are capped at 200,000 points.
+- `/health/db` endpoint and a twice-weekly GitHub Actions ping, so the free Supabase project doesn't pause.
+- Database schema in `supabase/migrations/`.
 
 ### Changed
+- Stroke coordinates are rounded to 0.1 board px on the server (invisible, keeps saved boards small).
+- Node 22 or newer is required (Supabase client).
 - Opening the site no longer jumps straight into a new board; the floating board badge is replaced by the top bar and home page.
 
 ## [1.0.0] - 2026-10-21

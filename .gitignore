@@ -11,10 +11,14 @@ dist/
 dist-types/
 *.tsbuildinfo
 
-# Env
+# Env and secrets - never commit
 .env
 .env.*
 !.env.example
+*.secret
+*.secret.*
+*.pem
+*.key
 
 # Logs / OS / editor
 *.log

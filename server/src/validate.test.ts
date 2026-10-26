@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MAX_BRUSH_SIZE } from "@whiteboard/shared";
 import {
   MAX_POINTS_PER_BATCH,
+  parseStoredStrokes,
   parseStrokeEnd,
   parseStrokePoints,
   parseStrokeStart,
@@ -52,6 +53,13 @@ describe("parseStrokePoints", () => {
     expect(parseStrokePoints(payload)).toEqual(payload);
   });
 
+  it("rounds coordinates to 0.1 px", () => {
+    expect(parseStrokePoints({ strokeId: "s1", points: [{ x: 1.23456, y: 9.98 }] })).toEqual({
+      strokeId: "s1",
+      points: [{ x: 1.2, y: 10 }],
+    });
+  });
+
   it("rejects an empty batch", () => {
     expect(parseStrokePoints({ strokeId: "s1", points: [] })).toBeNull();
   });
@@ -73,5 +81,31 @@ describe("parseStrokeEnd", () => {
 
   it("rejects a missing stroke ID", () => {
     expect(parseStrokeEnd({})).toBeNull();
+  });
+});
+
+describe("parseStoredStrokes", () => {
+  const good = { id: "s1", userId: "u1", color: "#1e1e1e", size: 4, tool: "pen", points: [{ x: 1, y: 2 }] };
+
+  it("keeps valid strokes", () => {
+    expect(parseStoredStrokes([good])).toEqual([good]);
+  });
+
+  it("drops invalid strokes and keeps the rest", () => {
+    const strokes = parseStoredStrokes([
+      good,
+      { ...good, id: "s2", color: "red" },
+      { ...good, id: "s3", points: [] },
+      { ...good, id: "s4", points: [{ x: "1", y: 2 }] },
+      { ...good, id: "s1" }, // duplicate ID
+      "junk",
+      { ...good, id: "s5", tool: "eraser" },
+    ]);
+    expect(strokes.map((s) => s.id)).toEqual(["s1", "s5"]);
+  });
+
+  it("returns nothing for non-arrays", () => {
+    expect(parseStoredStrokes(null)).toEqual([]);
+    expect(parseStoredStrokes({ strokes: [] })).toEqual([]);
   });
 });

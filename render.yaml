@@ -15,3 +15,8 @@ services:
       # Comma-separated list of sites allowed to connect.
       - key: CLIENT_ORIGIN
         value: https://whiteboard-ochre-five.vercel.app
+      # Supabase (saved boards). Secrets: set in the Render dashboard, never in this file.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
