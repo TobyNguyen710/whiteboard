@@ -56,7 +56,7 @@ shared/   Shared TypeScript types (socket events, Stroke, limits)
 
 ## Getting started
 
-Requires Node 22+.
+Requires Node 22.12+.
 
 ```bash
 npm install

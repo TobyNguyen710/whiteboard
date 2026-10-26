@@ -13,9 +13,12 @@ All notable changes to this project are documented here. Format based on [Keep a
 - `/health/db` endpoint and a twice-weekly GitHub Actions ping, so the free Supabase project doesn't pause.
 - Database schema in `supabase/migrations/`.
 
+### Security
+- Upgraded dev tooling to clear all `npm audit` findings (7 → 0): Vite 5 → 8, Vitest 3 → 5, @vitejs/plugin-react 4 → 6. The issues were in the dev server and test runner only; production dependencies already had none. Removed the Vite version pin added for Vitest 3.
+
 ### Changed
+- Node 22.12 or newer is required (Vite 8 / Vitest 5).
 - Stroke coordinates are rounded to 0.1 board px on the server (invisible, keeps saved boards small).
-- Node 22 or newer is required (Supabase client).
 - Opening the site no longer jumps straight into a new board; the floating board badge is replaced by the top bar and home page.
 
 ## [1.0.0] - 2026-10-21
