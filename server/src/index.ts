@@ -1,4 +1,5 @@
 import { createWhiteboardServer } from "./app.js";
+import { supabaseAuthenticator } from "./auth.js";
 import { SupabaseBoardStore } from "./supabaseStore.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -11,15 +12,20 @@ const SAVE_INTERVAL_MS = 2_000;
 const SWEEP_INTERVAL_MS = 60_000;
 
 const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
-const boardStore =
-  SUPABASE_URL && SUPABASE_SECRET_KEY ? new SupabaseBoardStore(SUPABASE_URL, SUPABASE_SECRET_KEY) : null;
-if (!boardStore) {
-  console.warn("SUPABASE_URL / SUPABASE_SECRET_KEY not set: boards are kept in memory only.");
+const supabase =
+  SUPABASE_URL && SUPABASE_SECRET_KEY ? { url: SUPABASE_URL, key: SUPABASE_SECRET_KEY } : null;
+const boardStore = supabase ? new SupabaseBoardStore(supabase.url, supabase.key) : null;
+const authenticate = supabase ? supabaseAuthenticator(supabase.url, supabase.key) : null;
+if (!supabase) {
+  console.warn(
+    "SUPABASE_URL / SUPABASE_SECRET_KEY not set: boards are kept in memory only and login is off.",
+  );
 }
 
 const { httpServer, io, rooms, saver } = createWhiteboardServer({
   clientOrigins: CLIENT_ORIGINS,
   boardStore,
+  authenticate,
 });
 
 // Save changed boards every couple of seconds rather than on every point.

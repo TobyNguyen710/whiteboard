@@ -12,6 +12,11 @@ All notable changes to this project are documented here. Format based on [Keep a
 - Safety: if a board can't be loaded, it's never saved over; idle boards are only unloaded once saved; boards are capped at 200,000 points.
 - `/health/db` endpoint and a twice-weekly GitHub Actions ping, so the free Supabase project doesn't pause.
 - Database schema in `supabase/migrations/`.
+- Sign in with Google or GitHub (Supabase Auth). Signed out, the home page is a landing page; signed in, it's your dashboard with an account menu.
+- Guests can join existing boards from a link with a random name (e.g. "Guest Teal Otter") they can change. Only signed-in users can create boards, and the creator is recorded as the board's owner.
+- See who's on a board: avatars in the top bar, with a list of names on click.
+- The server verifies every login when a connection opens; invalid logins are refused rather than treated as guests.
+- Privacy page at `/privacy` (required for Google sign-in), linked from the landing page.
 
 ### Security
 - Upgraded dev tooling to clear all `npm audit` findings (7 → 0): Vite 5 → 8, Vitest 3 → 5, @vitejs/plugin-react 4 → 6. The issues were in the dev server and test runner only; production dependencies already had none. Removed the Vite version pin added for Vitest 3.

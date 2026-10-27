@@ -1,7 +1,7 @@
 import type { Stroke } from "@whiteboard/shared";
 import type { RoomStore } from "./rooms.js";
 
-export type SavedBoard = { strokes: Stroke[] };
+export type SavedBoard = { strokes: Stroke[]; ownerId?: string | null };
 
 /** Where boards are saved. Supabase in production; in memory for tests. */
 export interface BoardStore {
@@ -65,7 +65,10 @@ export class BoardSaver {
   private async load(store: BoardStore, roomId: string): Promise<void> {
     try {
       const saved = await store.load(roomId);
-      const room = this.rooms.create(roomId, saved?.strokes ?? []);
+      const room = this.rooms.create(roomId, saved?.strokes ?? [], {
+        ownerId: saved?.ownerId ?? null,
+        isNew: saved === null,
+      });
       this.savedRevisions.set(roomId, room.revision);
     } catch (error) {
       this.log(`could not load board ${roomId}, it won't be saved this session: ${describe(error)}`);
@@ -90,7 +93,7 @@ export class BoardSaver {
       if (this.savedRevisions.get(room.id) === revision) continue;
 
       // Snapshot now: drawing continues while the save is in flight.
-      const snapshot: SavedBoard = { strokes: structuredClone(room.strokes) };
+      const snapshot: SavedBoard = { strokes: structuredClone(room.strokes), ownerId: room.ownerId };
       try {
         await store.save(room.id, snapshot);
         this.savedRevisions.set(room.id, revision);

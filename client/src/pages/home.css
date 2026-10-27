@@ -10,6 +10,7 @@
   z-index: 1;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   height: 60px;
   padding: env(safe-area-inset-top, 0px) clamp(16px, 4vw, 40px) 0;
   box-sizing: content-box;
@@ -21,6 +22,57 @@
   max-width: 1120px;
   margin: 0 auto;
   padding: 32px clamp(16px, 4vw, 40px) 64px;
+}
+
+.home-greeting {
+  margin: 0 0 20px;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+/* ---------- Landing (signed out) ---------- */
+
+.landing {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: clamp(24px, 6vw, 72px);
+  align-items: center;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: clamp(32px, 8vh, 96px) clamp(16px, 4vw, 40px) 64px;
+}
+
+.landing-hero {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 420px;
+}
+
+.landing-hero h1 {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 46px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.landing-pitch {
+  margin: 0 0 8px;
+  font-size: 17px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.landing-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.landing-join {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* ---------- Start cards ---------- */
@@ -302,4 +354,37 @@
   margin-top: 6px !important;
   font-size: 14px;
   color: var(--muted);
+}
+
+/* ---------- Privacy page ---------- */
+
+.legal {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px clamp(16px, 4vw, 40px) 64px;
+  line-height: 1.6;
+}
+
+.legal h1 {
+  margin: 0;
+  font-size: 30px;
+}
+
+.legal h2 {
+  margin: 28px 0 6px;
+  font-size: 18px;
+}
+
+.legal p {
+  margin: 0 0 12px;
+}
+
+.legal-updated {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.legal a,
+.landing-note a {
+  color: var(--ink);
 }

@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Navigate, useParams } from "react-router";
+import { Link, Navigate, useParams } from "react-router";
 import { isValidRoomId } from "@whiteboard/shared";
+import { useAuth } from "../auth";
 import { BoardTopBar } from "../BoardTopBar";
 import { Canvas, type CanvasHandle } from "../Canvas";
-import { cleanBoardName, recordVisit, renameBoard, saveThumbnail } from "../recentBoards";
+import { getGuestName, setGuestName } from "../guestName";
+import { Logo } from "../Logo";
+import {
+  cleanBoardName,
+  recordVisit,
+  removeRecentBoard,
+  renameBoard,
+  saveThumbnail,
+} from "../recentBoards";
+import { SignInButtons } from "../SignInButtons";
 import { Toolbar } from "../Toolbar";
 import { loadSettings, saveSettings, type ToolSettings } from "../tools";
 import { useRoomConnection } from "../useRoomConnection";
@@ -13,17 +23,32 @@ const THUMBNAIL_INTERVAL_MS = 15_000;
 
 export function BoardPage() {
   const { roomId } = useParams();
+  const { loading, account } = useAuth();
   if (!isValidRoomId(roomId)) return <Navigate to="/" replace />;
-  // A new key per board, so switching boards starts a fresh connection and canvas.
-  return <Board key={roomId} roomId={roomId} />;
+  if (loading) return <div className="page-loading">Loading…</div>;
+  // A new key per board and per login, so switching either starts a fresh connection
+  // (signing in or out mid-board reconnects as the new you).
+  return <Board key={`${roomId}:${account?.id ?? "guest"}`} roomId={roomId} />;
 }
 
 function Board({ roomId }: { roomId: string }) {
-  const { status, socket, userCount } = useRoomConnection(roomId);
+  const { account, signOut } = useAuth();
+  const [guestName, setGuestNameState] = useState(getGuestName);
+  const { status, socket, users, selfId, problem } = useRoomConnection(roomId);
   const [settings, setSettings] = useState<ToolSettings>(loadSettings);
   const [name, setName] = useState(() => recordVisit(roomId).name);
   const canvasRef = useRef<CanvasHandle>(null);
   const connected = status === "connected";
+
+  // The server rejected our login (expired or revoked): sign out and come back as a guest.
+  useEffect(() => {
+    if (problem === "unauthorized") void signOut();
+  }, [problem, signOut]);
+
+  // A board that doesn't exist shouldn't linger in the recent boards list.
+  useEffect(() => {
+    if (problem === "not-found") removeRecentBoard(roomId);
+  }, [problem, roomId]);
 
   useEffect(() => {
     document.title = `${name} · Whiteboard`;
@@ -79,9 +104,26 @@ function Board({ roomId }: { roomId: string }) {
 
   useUndoShortcuts(undo, redo);
 
+  const renameGuest = (next: string) => {
+    const cleaned = setGuestName(next);
+    if (!cleaned) return;
+    setGuestNameState(cleaned);
+    socket?.emit("user:rename", { name: cleaned });
+  };
+
+  if (problem === "not-found") return <BoardNotFound />;
+
   return (
     <div className="board-page">
-      <BoardTopBar name={name} onRename={rename} status={status} userCount={userCount} />
+      <BoardTopBar
+        name={name}
+        onRename={rename}
+        status={status}
+        users={users}
+        selfId={selfId}
+        guestName={account ? undefined : guestName}
+        onGuestRename={account ? undefined : renameGuest}
+      />
       <div className="board-area">
         <Canvas
           ref={canvasRef}
@@ -99,6 +141,24 @@ function Board({ roomId }: { roomId: string }) {
         onRedo={redo}
         onClear={clearBoard}
       />
+    </div>
+  );
+}
+
+function BoardNotFound() {
+  const { enabled, account } = useAuth();
+  return (
+    <div className="message-page">
+      <Logo />
+      <h1>This board doesn't exist</h1>
+      <p>
+        The link may be wrong, or the board was deleted.
+        {enabled && !account && " Sign in to create your own boards."}
+      </p>
+      {enabled && !account && <SignInButtons />}
+      <Link to="/" className="message-link">
+        Back to home
+      </Link>
     </div>
   );
 }

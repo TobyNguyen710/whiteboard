@@ -413,3 +413,264 @@ body {
 .status-offline {
   background: #a0a0a8;
 }
+
+/* ---------- Avatars and people ---------- */
+
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  object-fit: cover;
+  color: #ffffff;
+  font-weight: 650;
+  line-height: 1;
+  user-select: none;
+  background: #ced4da;
+}
+
+/* White ring so overlapping avatars stay distinct. */
+.avatar-ring {
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.avatar-more {
+  width: 28px;
+  height: 28px;
+  font-size: 11px;
+  background: #e9ecef;
+  color: var(--ink);
+}
+
+.participants {
+  position: relative;
+}
+
+.participant-stack {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.participant-stack > * + * {
+  margin-left: -8px;
+}
+
+.participant-stack:hover {
+  background: var(--page);
+}
+
+.participant-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.participant-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  font-size: 14px;
+}
+
+.participant-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.participant-tag {
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--page);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---------- Popovers and account menu ---------- */
+
+.popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 10;
+  width: min(300px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.12);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.popover-title {
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+
+.popover-item {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--page);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.popover-item:hover {
+  background: #e8e8ec;
+}
+
+.account-menu {
+  position: relative;
+}
+
+.account-trigger {
+  display: grid;
+  place-items: center;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.account-trigger:focus-visible {
+  outline: 2px solid #1971c2;
+}
+
+.account-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.account-name {
+  font-weight: 600;
+}
+
+.account-email {
+  font-size: 13px;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.guest-name-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.guest-name-row {
+  display: flex;
+  gap: 6px;
+}
+
+.guest-name-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid #c8c8d0;
+  border-radius: 8px;
+  font: inherit;
+  color: var(--ink);
+}
+
+/* ---------- Sign-in buttons ---------- */
+
+.signin-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.signin-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #c8c8d0;
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.signin-button:hover:not(:disabled) {
+  background: var(--page);
+}
+
+.signin-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.signin-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+/* ---------- Loading and message pages ---------- */
+
+.page-loading {
+  display: grid;
+  place-items: center;
+  min-height: 50vh;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.message-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  max-width: 360px;
+  margin: 12vh auto 0;
+  padding: 0 16px;
+  text-align: center;
+}
+
+.message-page h1 {
+  margin: 12px 0 0;
+  font-size: 22px;
+}
+
+.message-page p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.message-link {
+  color: var(--ink);
+  font-weight: 600;
+}

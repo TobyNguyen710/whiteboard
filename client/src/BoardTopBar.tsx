@@ -1,5 +1,8 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link } from "react-router";
+import type { Participant } from "@whiteboard/shared";
+import { AccountMenu } from "./AccountMenu";
+import { ParticipantList } from "./ParticipantList";
 import { MAX_NAME_LENGTH } from "./recentBoards";
 import type { ConnectionStatus } from "./useRoomConnection";
 
@@ -13,10 +16,22 @@ type Props = {
   name: string;
   onRename: (name: string) => void;
   status: ConnectionStatus;
-  userCount: number | null;
+  users: Participant[];
+  selfId: string | null;
+  /** Set for guests, who can change the name others see. */
+  guestName?: string;
+  onGuestRename?: (name: string) => void;
 };
 
-export function BoardTopBar({ name, onRename, status, userCount }: Props) {
+export function BoardTopBar({
+  name,
+  onRename,
+  status,
+  users,
+  selfId,
+  guestName,
+  onGuestRename,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const [copied, setCopied] = useState(false);
@@ -93,16 +108,18 @@ export function BoardTopBar({ name, onRename, status, userCount }: Props) {
       </div>
 
       <div className="topbar-right">
-        <span className="connection" aria-live="polite">
-          <span className={`status-dot status-${status}`} aria-hidden="true" />
-          {STATUS_LABELS[status]}
-          {status === "connected" && userCount !== null && (
-            <span className="user-count"> · {userCount} online</span>
-          )}
-        </span>
+        {status === "connected" ? (
+          <ParticipantList users={users} selfId={selfId} />
+        ) : (
+          <span className="connection" aria-live="polite">
+            <span className={`status-dot status-${status}`} aria-hidden="true" />
+            {STATUS_LABELS[status]}
+          </span>
+        )}
         <button type="button" className="share-button" onClick={() => void share()}>
           {copied ? "Link copied!" : "Share"}
         </button>
+        <AccountMenu guestName={guestName} onGuestRename={onGuestRename} />
       </div>
     </header>
   );

@@ -43,7 +43,7 @@ I wanted to understand how tools like Figma and Excalidraw keep everyone's view 
 | Language | TypeScript (strict) |
 | Client | React + Vite, HTML canvas with Pointer Events |
 | Server | Node + Socket.IO |
-| Database | Supabase Postgres (saved boards) |
+| Database and login | Supabase (Postgres, Auth with Google and GitHub) |
 | Tests | Vitest (unit + integration with real sockets) |
 | CI | GitHub Actions: lint, typecheck, test, build |
 | Hosting | Vercel (client), Render (server) |
@@ -65,7 +65,12 @@ npm run dev:server   # http://localhost:3001
 npm run dev:client   # http://localhost:5173
 ```
 
-Boards are kept in memory unless the server has Supabase settings. To save boards locally, create a Supabase project, run `supabase/migrations/*.sql` in its SQL editor, and copy `server/.env.example` to `server/.env` with your project URL and secret key.
+Boards are kept in memory and login is off unless Supabase is configured. To enable both locally:
+
+1. Create a Supabase project and run `supabase/migrations/*.sql` (in order) in its SQL editor.
+2. Copy `server/.env.example` to `server/.env` with the project URL and **secret** key.
+3. Copy `client/.env.example` to `client/.env.local` with the project URL and **publishable** key.
+4. For login, enable the Google and GitHub providers in Supabase Auth and add `http://localhost:5173/**` to its redirect URLs.
 
 ## Testing
 
@@ -80,7 +85,7 @@ Unit tests cover the pure logic (board math, point batching, input validation, t
 
 ## Deploying
 
-- **Client (Vercel):** import the repo with the root directory left at the repo root; `vercel.json` sets the build. Set `VITE_SERVER_URL` to the server's URL.
+- **Client (Vercel):** import the repo with the root directory left at the repo root; `vercel.json` sets the build. Set `VITE_SERVER_URL` to the server's URL, and `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` for login.
 - **Server (Render):** create a Blueprint from the repo; `render.yaml` sets the build, start command, health check, and `CLIENT_ORIGIN` (comma-separated list of allowed sites). Set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` in the Render dashboard.
 - **Database (Supabase):** run the SQL files in `supabase/migrations/` in order. The `keepalive` workflow pings `/health/db` twice a week so the free project doesn't pause.
 

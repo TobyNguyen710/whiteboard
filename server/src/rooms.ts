@@ -24,8 +24,15 @@ export type Room = {
   redoStacks: Map<string, Stroke[]>;
   /** Total points across `strokes`. */
   pointCount: number;
-  /** Bumped on every change to `strokes`, so the saver can tell what needs saving. */
+  /** Bumped on every change to `strokes` or the owner, so the saver can tell what needs saving. */
   revision: number;
+  /** Account that created the board, or null (created before login existed, or memory-only). */
+  ownerId: string | null;
+  /**
+   * True for a board that has never been saved and nobody signed in has opened yet. When an
+   * account is required to create boards, guests can't join these (the board doesn't exist).
+   */
+  isNew: boolean;
   emptySince: number | null;
 };
 
@@ -49,8 +56,12 @@ export class RoomStore {
     return this.rooms.values();
   }
 
-  /** Create a board in memory, optionally with saved strokes. Replaces nothing if it exists. */
-  create(roomId: string, strokes: Stroke[] = []): Room {
+  /** Create a board in memory, optionally from a saved one. Replaces nothing if it exists. */
+  create(
+    roomId: string,
+    strokes: Stroke[] = [],
+    { ownerId = null, isNew = false }: { ownerId?: string | null; isNew?: boolean } = {},
+  ): Room {
     const existing = this.rooms.get(roomId);
     if (existing) return existing;
 
@@ -66,6 +77,8 @@ export class RoomStore {
       redoStacks: new Map(),
       pointCount: strokes.reduce((sum, s) => sum + s.points.length, 0),
       revision: 0,
+      ownerId,
+      isNew,
       emptySince: this.now(),
     };
     for (const stroke of strokes) room.seqById.set(stroke.id, room.nextSeq++);
@@ -204,6 +217,16 @@ export class RoomStore {
     room.redoStacks.clear();
     room.pointCount = 0;
     room.revision++;
+    return true;
+  }
+
+  /** A signed-in user creates a new board by opening it: they become its owner. */
+  claim(roomId: string, ownerId: string): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.isNew) return false;
+    room.isNew = false;
+    room.ownerId = ownerId;
+    room.revision++; // save the (possibly still empty) board so it exists from now on
     return true;
   }
 

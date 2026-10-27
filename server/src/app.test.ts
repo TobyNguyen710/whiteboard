@@ -4,9 +4,11 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { io as connectClient, type Socket } from "socket.io-client";
 import type {
   ClientToServerEvents,
+  HandshakeAuth,
   ServerToClientEvents,
   StrokeStartPayload,
 } from "@whiteboard/shared";
+import type { Authenticator } from "./auth.js";
 import { createWhiteboardServer, type WhiteboardServer } from "./app.js";
 import { MemoryBoardStore } from "./persistence.js";
 
@@ -38,11 +40,11 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.disconnect();
 });
 
+type RecordingClient = Client & { received: Array<[EventName, unknown]> };
+
 /** Connect a client that records every event it receives. */
-async function connect(): Promise<Client & { received: Array<[EventName, unknown]> }> {
-  const client = connectClient(url, { transports: ["websocket"], forceNew: true }) as Client & {
-    received: Array<[EventName, unknown]>;
-  };
+async function connect(auth: HandshakeAuth = {}, target = url): Promise<RecordingClient> {
+  const client = connectClient(target, { transports: ["websocket"], forceNew: true, auth }) as RecordingClient;
   client.received = [];
   client.onAny((event: EventName, payload: unknown) => client.received.push([event, payload]));
   clients.push(client);
@@ -127,11 +129,13 @@ describe("rooms", () => {
     expect(a.received).toEqual([]);
   });
 
-  it("counts people on the board as they join and leave", async () => {
+  it("lists people on the board as they join and leave", async () => {
     const { a, b } = await joinedPair("count1234");
-    expect(await next(a, "room:users", (p) => p.count === 2)).toEqual({ count: 2 });
+    const both = await next(a, "room:users", (p) => p.count === 2);
+    expect(both.users.map((u) => u.id).sort()).toEqual([a.id, b.id].sort());
     b.disconnect();
-    expect(await next(a, "room:users", (p) => p.count === 1)).toEqual({ count: 1 });
+    const alone = await next(a, "room:users", (p) => p.count === 1);
+    expect(alone.users.map((u) => u.id)).toEqual([a.id]);
   });
 });
 
@@ -263,5 +267,138 @@ describe("saved boards", () => {
     } finally {
       await restarted.server.io.close();
     }
+  });
+});
+
+// ---------- Accounts and guests: a second server with a fake login checker ----------
+
+const ALICE = { id: "00000000-0000-0000-0000-00000000a11c", name: "Alice Smith", avatarUrl: "https://example.com/alice.png" };
+const BOB = { id: "00000000-0000-0000-0000-0000000000b0", name: "Bob", avatarUrl: null };
+
+const fakeAuthenticator: Authenticator = async (token) => {
+  if (token === "alice-token") return ALICE;
+  if (token === "bob-token") return BOB;
+  if (token === "outage-token") throw new Error("auth service down");
+  return null;
+};
+
+describe("accounts and guests", () => {
+  const authStore = new MemoryBoardStore();
+  let auth: WhiteboardServer;
+  let authUrl: string;
+
+  beforeAll(async () => {
+    auth = createWhiteboardServer({
+      clientOrigins: [ORIGIN],
+      boardStore: authStore,
+      authenticate: fakeAuthenticator,
+      log: () => {},
+    });
+    await new Promise<void>((resolve) => auth.httpServer.listen(0, resolve));
+    authUrl = `http://localhost:${(auth.httpServer.address() as AddressInfo).port}`;
+  });
+
+  afterAll(async () => {
+    await auth.io.close();
+  });
+
+  const connectAs = (handshake: HandshakeAuth) => connect(handshake, authUrl);
+
+  const connectError = (handshake: HandshakeAuth) =>
+    new Promise<string>((resolve) => {
+      const client = connectClient(authUrl, { transports: ["websocket"], forceNew: true, auth: handshake });
+      clients.push(client as Client);
+      client.once("connect_error", (error) => resolve(error.message));
+    });
+
+  it("shows signed-in users with their account name and picture", async () => {
+    const alice = await connectAs({ token: "alice-token" });
+    alice.emit("room:join", { roomId: "names1234" });
+    const { users } = await next(alice, "room:users");
+    expect(users).toEqual([{ id: alice.id, name: "Alice Smith", avatarUrl: ALICE.avatarUrl, isGuest: false }]);
+  });
+
+  it("shows guests with their cleaned-up chosen name", async () => {
+    const alice = await connectAs({ token: "alice-token" });
+    alice.emit("room:join", { roomId: "names5678" });
+    await next(alice, "room:state");
+
+    const guest = await connectAs({ guestName: "   Teal    Otter  " });
+    guest.emit("room:join", { roomId: "names5678" });
+    const { users } = await next(guest, "room:users", (p) => p.count === 2);
+    expect(users.find((u) => u.id === guest.id)).toEqual({
+      id: guest.id,
+      name: "Teal Otter",
+      avatarUrl: null,
+      isGuest: true,
+    });
+  });
+
+  it("refuses an invalid login instead of quietly making you a guest", async () => {
+    expect(await connectError({ token: "forged-token" })).toBe("unauthorized");
+  });
+
+  it("reports when logins can't be checked", async () => {
+    expect(await connectError({ token: "outage-token" })).toBe("auth unavailable");
+  });
+
+  it("doesn't let guests create boards", async () => {
+    const guest = await connectAs({ guestName: "Sneaky" });
+    guest.emit("room:join", { roomId: "nobody1234" });
+    expect(await next(guest, "room:error")).toEqual({ reason: "not-found" });
+    await settle();
+    expect(guest.received.some(([e]) => e === "room:state")).toBe(false);
+
+    // Still doesn't exist for the next guest either.
+    const another = await connectAs({ guestName: "Also sneaky" });
+    another.emit("room:join", { roomId: "nobody1234" });
+    expect(await next(another, "room:error")).toEqual({ reason: "not-found" });
+  });
+
+  it("lets a signed-in user create a board, records them as owner, then guests can join", async () => {
+    const alice = await connectAs({ token: "alice-token" });
+    alice.emit("room:join", { roomId: "owned1234" });
+    expect((await next(alice, "room:state")).strokes).toEqual([]);
+    await auth.saver.flush();
+    expect((await authStore.load("owned1234"))?.ownerId).toBe(ALICE.id);
+
+    const guest = await connectAs({ guestName: "Friend" });
+    guest.emit("room:join", { roomId: "owned1234" });
+    await next(guest, "room:state");
+  });
+
+  it("keeps the original owner when someone else opens the board", async () => {
+    const alice = await connectAs({ token: "alice-token" });
+    alice.emit("room:join", { roomId: "keepowner1" });
+    await next(alice, "room:state");
+    const bob = await connectAs({ token: "bob-token" });
+    bob.emit("room:join", { roomId: "keepowner1" });
+    await next(bob, "room:state");
+    await auth.saver.flush();
+    expect((await authStore.load("keepowner1"))?.ownerId).toBe(ALICE.id);
+  });
+
+  it("lets guests open boards saved before login existed (no owner)", async () => {
+    await authStore.save("legacy1234", { strokes: [], ownerId: null });
+    const guest = await connectAs({ guestName: "Old friend" });
+    guest.emit("room:join", { roomId: "legacy1234" });
+    await next(guest, "room:state");
+  });
+
+  it("lets guests rename themselves, but not signed-in users", async () => {
+    const alice = await connectAs({ token: "alice-token" });
+    alice.emit("room:join", { roomId: "rename1234" });
+    await next(alice, "room:state");
+    const guest = await connectAs({ guestName: "Before" });
+    guest.emit("room:join", { roomId: "rename1234" });
+    await next(alice, "room:users", (p) => p.count === 2);
+
+    guest.emit("user:rename", { name: "  After  " });
+    const renamed = await next(alice, "room:users", (p) => p.users.some((u) => u.name === "After"));
+    expect(renamed.users.find((u) => u.id === guest.id)?.name).toBe("After");
+
+    alice.emit("user:rename", { name: "Not Alice" });
+    await settle();
+    expect(alice.received.some(([e, p]) => e === "room:users" && JSON.stringify(p).includes("Not Alice"))).toBe(false);
   });
 });

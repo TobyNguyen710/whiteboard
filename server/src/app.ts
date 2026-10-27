@@ -1,15 +1,22 @@
 import { createServer, type Server as HttpServer } from "node:http";
 import { Server } from "socket.io";
 import {
+  cleanDisplayName,
+  DEFAULT_GUEST_NAME,
   isValidRoomId,
   type ClientToServerEvents,
+  type Participant,
   type ServerToClientEvents,
 } from "@whiteboard/shared";
+import type { Authenticator } from "./auth.js";
 import { BoardSaver, type BoardStore } from "./persistence.js";
 import { RoomStore } from "./rooms.js";
 import { parseStrokeEnd, parseStrokePoints, parseStrokeStart } from "./validate.js";
 
-type SocketData = { roomId?: string };
+/** Who is behind a connection: a verified account, or a guest with a chosen name. */
+type SocketUser = { accountId: string | null; name: string; avatarUrl: string | null };
+
+type SocketData = { roomId?: string; user: SocketUser };
 
 export type WhiteboardIo = Server<
   ClientToServerEvents,
@@ -23,6 +30,11 @@ export type WhiteboardServerOptions = {
   clientOrigins: string[];
   /** Where boards are saved. Null keeps boards in memory only (lost on restart). */
   boardStore?: BoardStore | null;
+  /**
+   * Verifies login tokens. When set, only signed-in users can create boards (guests can still
+   * join existing ones). Null: everyone is a guest and anyone can create boards.
+   */
+  authenticate?: Authenticator | null;
   /** Where to send log lines. Defaults to console.log; tests pass a no-op. */
   log?: (message: string) => void;
 };
@@ -38,6 +50,7 @@ export type WhiteboardServer = {
 export function createWhiteboardServer({
   clientOrigins,
   boardStore = null,
+  authenticate = null,
   log = console.log,
 }: WhiteboardServerOptions): WhiteboardServer {
   const rooms = new RoomStore();
@@ -69,10 +82,49 @@ export function createWhiteboardServer({
 
   const io: WhiteboardIo = new Server(httpServer, { cors: { origin: clientOrigins } });
 
-  const broadcastUserCount = (roomId: string) => {
-    const count = rooms.get(roomId)?.users.size ?? 0;
-    io.to(roomId).emit("room:users", { count });
+  /** Everyone on a board, from the connections in its Socket.IO room. */
+  const participants = (roomId: string): Participant[] => {
+    const ids = io.sockets.adapter.rooms.get(roomId) ?? new Set<string>();
+    const list: Participant[] = [];
+    for (const id of ids) {
+      const user = io.sockets.sockets.get(id)?.data.user;
+      if (!user) continue;
+      list.push({ id, name: user.name, avatarUrl: user.avatarUrl, isGuest: user.accountId === null });
+    }
+    return list;
   };
+
+  const broadcastUsers = (roomId: string) => {
+    const users = participants(roomId);
+    io.to(roomId).emit("room:users", { count: users.length, users });
+  };
+
+  // Every connection says who it is: a login token (checked here) or a guest name.
+  io.use(async (socket, next) => {
+    const auth = (socket.handshake.auth ?? {}) as Record<string, unknown>;
+    const token = typeof auth.token === "string" && auth.token ? auth.token : null;
+
+    if (token && authenticate) {
+      try {
+        const user = await authenticate(token);
+        // A bad or expired token is refused outright, so the client can refresh or sign out
+        // instead of silently becoming a guest.
+        if (!user) return next(new Error("unauthorized"));
+        socket.data.user = { accountId: user.id, name: user.name, avatarUrl: user.avatarUrl };
+        return next();
+      } catch (error) {
+        log(`login check failed: ${error instanceof Error ? error.message : String(error)}`);
+        return next(new Error("auth unavailable"));
+      }
+    }
+
+    socket.data.user = {
+      accountId: null,
+      name: cleanDisplayName(auth.guestName) ?? DEFAULT_GUEST_NAME,
+      avatarUrl: null,
+    };
+    next();
+  });
 
   io.on("connection", (socket) => {
     // The socket ID doubles as the user ID for v1 (no accounts).
@@ -89,7 +141,7 @@ export function createWhiteboardServer({
       if (previous) {
         rooms.leave(previous, userId);
         void socket.leave(previous);
-        broadcastUserCount(previous);
+        broadcastUsers(previous);
       }
 
       // Saved boards are loaded on first open. Strokes sent before this finishes are dropped
@@ -98,12 +150,25 @@ export function createWhiteboardServer({
       await saver.ensureLoaded(roomId);
       if (!socket.connected || socket.data.roomId !== roomId) return;
 
+      // Creating a board needs an account: a brand-new board can be opened by a signed-in user
+      // (who becomes its owner) but not by a guest.
+      const { accountId } = socket.data.user;
+      if (rooms.get(roomId)?.isNew && authenticate) {
+        if (!accountId) {
+          socket.data.roomId = undefined;
+          socket.emit("room:error", { reason: "not-found" });
+          return;
+        }
+        rooms.claim(roomId, accountId);
+        log(`${userId} created ${roomId}`);
+      }
+
       const room = rooms.join(roomId, userId);
       void socket.join(roomId);
 
       // Late joiners catch up on the full history, including strokes still being drawn.
       socket.emit("room:state", { strokes: room.strokes });
-      broadcastUserCount(roomId);
+      broadcastUsers(roomId);
       log(`${userId} joined ${roomId} (${room.users.size} on board)`);
     });
 
@@ -156,11 +221,19 @@ export function createWhiteboardServer({
       log(`${userId} cleared ${roomId}`);
     });
 
+    // Guests can change the name others see; account names come from Google/GitHub.
+    socket.on("user:rename", (payload) => {
+      const name = cleanDisplayName(payload?.name);
+      if (!name || socket.data.user.accountId) return;
+      socket.data.user.name = name;
+      if (socket.data.roomId) broadcastUsers(socket.data.roomId);
+    });
+
     socket.on("disconnect", () => {
       const roomId = socket.data.roomId;
       if (roomId) {
         rooms.leave(roomId, userId);
-        broadcastUserCount(roomId);
+        broadcastUsers(roomId);
       }
       log(`disconnected: ${userId}`);
     });

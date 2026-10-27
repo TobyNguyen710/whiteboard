@@ -18,17 +18,26 @@ export class SupabaseBoardStore implements BoardStore {
   async load(boardId: string): Promise<SavedBoard | null> {
     const { data, error } = await this.db
       .from("boards")
-      .select("strokes")
+      .select("strokes, owner_id")
       .eq("id", boardId)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return data ? { strokes: parseStoredStrokes(data.strokes) } : null;
+    if (!data) return null;
+    return {
+      strokes: parseStoredStrokes(data.strokes),
+      ownerId: typeof data.owner_id === "string" ? data.owner_id : null,
+    };
   }
 
   async save(boardId: string, board: SavedBoard): Promise<void> {
     const { error } = await this.db
       .from("boards")
-      .upsert({ id: boardId, strokes: board.strokes, updated_at: new Date().toISOString() });
+      .upsert({
+        id: boardId,
+        strokes: board.strokes,
+        owner_id: board.ownerId ?? null,
+        updated_at: new Date().toISOString(),
+      });
     if (error) throw new Error(error.message);
   }
 
