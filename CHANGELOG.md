@@ -17,12 +17,17 @@ All notable changes to this project are documented here. Format based on [Keep a
 - See who's on a board: avatars in the top bar, with a list of names on click.
 - The server verifies every login when a connection opens; invalid logins are refused rather than treated as guests.
 - Privacy page at `/privacy` (required for Google sign-in), linked from the landing page.
+- Your boards on your account: the dashboard has Recent, My boards, and Shared with me tabs, loaded from the database so they're the same on every device. Rename or delete boards you own (delete asks first and removes the board for everyone on it); remove shared boards from your list.
+- Board names are saved on the board: only the owner can rename it, and everyone on the board sees the new name immediately.
+- Board previews are saved with the board (sent by signed-in people on it), so dashboard thumbnails look right anywhere. Clearing a board clears its preview.
+- Server API for dashboard actions (`PATCH`/`DELETE /api/boards/:id`, `DELETE /api/boards/:id/membership`), checked by login and ownership, with CORS limited to the site.
+- Database: `board_members` table and board thumbnails, with row-level security so signed-in users can only read their own boards and memberships.
 
 ### Security
 - Upgraded dev tooling to clear all `npm audit` findings (7 → 0): Vite 5 → 8, Vitest 3 → 5, @vitejs/plugin-react 4 → 6. The issues were in the dev server and test runner only; production dependencies already had none. Removed the Vite version pin added for Vitest 3.
 
 ### Changed
-- Node 22.12 or newer is required (Vite 8 / Vitest 5).
+- Node 22.12+ or 24 is required (bounded so hosting doesn't jump to a new major version unannounced).
 - Stroke coordinates are rounded to 0.1 board px on the server (invisible, keeps saved boards small).
 - Opening the site no longer jumps straight into a new board; the floating board badge is replaced by the top bar and home page.
 

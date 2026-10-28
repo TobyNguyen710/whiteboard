@@ -1,6 +1,16 @@
-import { isValidRoomId } from "@whiteboard/shared";
+import {
+  cleanBoardName as cleanSharedBoardName,
+  DEFAULT_BOARD_NAME,
+  isValidRoomId,
+  MAX_BOARD_NAME_LENGTH,
+} from "@whiteboard/shared";
 
-/** A board this browser has opened. Stored locally until boards are saved to accounts. */
+export { DEFAULT_BOARD_NAME };
+
+/**
+ * A board this browser has opened. Used when login isn't configured for this build; signed-in
+ * users get their boards from their account instead (see useMyBoards).
+ */
 export type RecentBoard = {
   id: string;
   name: string;
@@ -10,9 +20,8 @@ export type RecentBoard = {
   thumbnail?: string;
 };
 
-export const DEFAULT_BOARD_NAME = "Untitled board";
 export const MAX_RECENT_BOARDS = 24;
-export const MAX_NAME_LENGTH = 60;
+export const MAX_NAME_LENGTH = MAX_BOARD_NAME_LENGTH;
 
 const STORAGE_KEY = "whiteboard:recent-boards";
 
@@ -72,8 +81,7 @@ export function recordVisit(id: string, now = Date.now()): RecentBoard {
 
 /** Trim, collapse spaces, cap length; empty names fall back to the default. */
 export function cleanBoardName(name: string): string {
-  const cleaned = name.replace(/\s+/g, " ").trim().slice(0, MAX_NAME_LENGTH);
-  return cleaned || DEFAULT_BOARD_NAME;
+  return cleanSharedBoardName(name) ?? DEFAULT_BOARD_NAME;
 }
 
 export function renameBoard(id: string, name: string): void {

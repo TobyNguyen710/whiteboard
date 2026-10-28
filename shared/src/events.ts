@@ -24,6 +24,10 @@ export interface ClientToServerEvents {
   "stroke:redo": () => void;
   /** Guests can change the name others see. Signed-in users use their account name. */
   "user:rename": (payload: { name: string }) => void;
+  /** Rename the board (owner only). */
+  "board:rename": (payload: { name: string }) => void;
+  /** A fresh preview of the board for dashboards (signed-in users on the board). */
+  "board:thumbnail": (payload: { image: string }) => void;
 }
 
 /** Why the server refused to put you on a board. */
@@ -32,7 +36,11 @@ export type RoomErrorReason =
   "not-found";
 
 export interface ServerToClientEvents {
-  "room:state": (payload: { strokes: Stroke[] }) => void;
+  /** Sent when you join: the board's drawing, its name, and whether you own it. */
+  "room:state": (payload: { strokes: Stroke[]; name: string; isOwner: boolean }) => void;
+  "board:renamed": (payload: { name: string }) => void;
+  /** The owner deleted the board. Everyone on it is removed. */
+  "board:deleted": (payload: Record<string, never>) => void;
   "stroke:start": (payload: StrokeStartPayload & { userId: string }) => void;
   "stroke:points": (payload: StrokePointsPayload) => void;
   "stroke:end": (payload: StrokeEndPayload) => void;

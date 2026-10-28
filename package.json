@@ -9,7 +9,7 @@
     "client"
   ],
   "engines": {
-    "node": ">=22.12"
+    "node": "^22.12.0 || ^24.0.0"
   },
   "scripts": {
     "dev:client": "npm run dev -w client",

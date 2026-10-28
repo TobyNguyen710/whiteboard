@@ -1,13 +1,16 @@
 import { createServer, type Server as HttpServer } from "node:http";
 import { Server } from "socket.io";
 import {
+  cleanBoardName,
   cleanDisplayName,
   DEFAULT_GUEST_NAME,
   isValidRoomId,
+  isValidThumbnail,
   type ClientToServerEvents,
   type Participant,
   type ServerToClientEvents,
 } from "@whiteboard/shared";
+import { handleApi, type ApiContext } from "./api.js";
 import type { Authenticator } from "./auth.js";
 import { BoardSaver, type BoardStore } from "./persistence.js";
 import { RoomStore } from "./rooms.js";
@@ -60,6 +63,11 @@ export function createWhiteboardServer({
   // /health/db also touches the database, which keeps a free Supabase project from pausing.
   // Socket.IO handles its own /socket.io/ requests before this runs.
   const httpServer = createServer((req, res) => {
+    // Dashboard actions (rename, delete, leave). apiContext is defined below, before any request.
+    if (req.url?.startsWith("/api/")) {
+      void handleApi(req, res, apiContext);
+      return;
+    }
     const reply = (status: number, body: string) => {
       res.writeHead(status, { "content-type": "text/plain" });
       res.end(body);
@@ -97,6 +105,61 @@ export function createWhiteboardServer({
   const broadcastUsers = (roomId: string) => {
     const users = participants(roomId);
     io.to(roomId).emit("room:users", { count: users.length, users });
+  };
+
+  // ---------- Board actions, shared by the board itself and the dashboard API ----------
+
+  /** Owner of a board (null = no owner), or undefined if the board doesn't exist. */
+  const ownerOf = async (roomId: string): Promise<string | null | undefined> => {
+    const room = rooms.get(roomId);
+    if (room) return room.isNew ? undefined : room.ownerId;
+    if (!boardStore) return undefined;
+    const meta = await boardStore.loadMeta(roomId);
+    return meta ? meta.ownerId : undefined;
+  };
+
+  const renameBoard = async (roomId: string, name: string) => {
+    if (rooms.get(roomId)) {
+      // In memory: the saver writes it, and everyone on the board sees it now.
+      if (rooms.rename(roomId, name)) io.to(roomId).emit("board:renamed", { name });
+    } else {
+      await boardStore?.rename(roomId, name);
+    }
+  };
+
+  const deleteBoard = async (roomId: string) => {
+    // Remove everyone first, then make sure no save in progress can write the board back.
+    io.to(roomId).emit("board:deleted", {});
+    for (const id of [...(io.sockets.adapter.rooms.get(roomId) ?? [])]) {
+      const socket = io.sockets.sockets.get(id);
+      if (!socket) continue;
+      rooms.leave(roomId, socket.id);
+      socket.data.roomId = undefined;
+      void socket.leave(roomId);
+    }
+    rooms.remove(roomId);
+    await saver.whenIdle();
+    saver.forget([roomId]);
+    await boardStore?.remove(roomId);
+  };
+
+  /** Remember that a signed-in user opened a board (for their dashboard). Best effort. */
+  const recordVisit = (roomId: string, accountId: string) => {
+    boardStore?.recordVisit(roomId, accountId).catch((error: unknown) => {
+      log(`could not record visit to ${roomId}: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  };
+
+  const apiContext: ApiContext = {
+    clientOrigins,
+    authenticate,
+    ownerOf,
+    renameBoard,
+    deleteBoard,
+    leaveBoardList: async (roomId, userId) => {
+      await boardStore?.removeMember(roomId, userId);
+    },
+    log,
   };
 
   // Every connection says who it is: a login token (checked here) or a guest name.
@@ -161,14 +224,22 @@ export function createWhiteboardServer({
         }
         rooms.claim(roomId, accountId);
         log(`${userId} created ${roomId}`);
+        // Save the new board now, so it exists before it's added to anyone's dashboard.
+        await saver.saveNow(roomId);
+        if (!socket.connected || socket.data.roomId !== roomId) return;
       }
 
       const room = rooms.join(roomId, userId);
       void socket.join(roomId);
 
       // Late joiners catch up on the full history, including strokes still being drawn.
-      socket.emit("room:state", { strokes: room.strokes });
+      socket.emit("room:state", {
+        strokes: room.strokes,
+        name: room.name,
+        isOwner: accountId !== null && room.ownerId === accountId,
+      });
       broadcastUsers(roomId);
+      if (accountId) recordVisit(roomId, accountId);
       log(`${userId} joined ${roomId} (${room.users.size} on board)`);
     });
 
@@ -219,6 +290,23 @@ export function createWhiteboardServer({
       if (!rooms.clear(roomId, userId)) return;
       io.to(roomId).emit("board:cleared", {});
       log(`${userId} cleared ${roomId}`);
+    });
+
+    // Only the owner renames the board; everyone on it sees the new name right away.
+    socket.on("board:rename", (payload) => {
+      const roomId = socket.data.roomId;
+      const name = cleanBoardName(payload?.name);
+      const { accountId } = socket.data.user;
+      if (!roomId || !name || !accountId || rooms.get(roomId)?.ownerId !== accountId) return;
+      void renameBoard(roomId, name);
+    });
+
+    // Signed-in people on the board keep its dashboard preview fresh.
+    socket.on("board:thumbnail", (payload) => {
+      const roomId = socket.data.roomId;
+      const image = payload?.image;
+      if (!roomId || !socket.data.user.accountId || !isValidThumbnail(image)) return;
+      rooms.setThumbnail(roomId, image);
     });
 
     // Guests can change the name others see; account names come from Google/GitHub.

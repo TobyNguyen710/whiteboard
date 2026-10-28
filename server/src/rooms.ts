@@ -1,4 +1,9 @@
-import type { Point, Stroke, StrokeStartPayload } from "@whiteboard/shared";
+import {
+  DEFAULT_BOARD_NAME,
+  type Point,
+  type Stroke,
+  type StrokeStartPayload,
+} from "@whiteboard/shared";
 
 export const MAX_STROKES_PER_ROOM = 10_000;
 export const MAX_POINTS_PER_STROKE = 20_000;
@@ -24,10 +29,13 @@ export type Room = {
   redoStacks: Map<string, Stroke[]>;
   /** Total points across `strokes`. */
   pointCount: number;
-  /** Bumped on every change to `strokes` or the owner, so the saver can tell what needs saving. */
+  /** Bumped on every change worth saving (strokes, owner, name, thumbnail). */
   revision: number;
   /** Account that created the board, or null (created before login existed, or memory-only). */
   ownerId: string | null;
+  name: string;
+  /** Small JPEG data URL for dashboard cards, or null if none yet. */
+  thumbnail: string | null;
   /**
    * True for a board that has never been saved and nobody signed in has opened yet. When an
    * account is required to create boards, guests can't join these (the board doesn't exist).
@@ -60,7 +68,12 @@ export class RoomStore {
   create(
     roomId: string,
     strokes: Stroke[] = [],
-    { ownerId = null, isNew = false }: { ownerId?: string | null; isNew?: boolean } = {},
+    {
+      ownerId = null,
+      isNew = false,
+      name = DEFAULT_BOARD_NAME,
+      thumbnail = null,
+    }: { ownerId?: string | null; isNew?: boolean; name?: string; thumbnail?: string | null } = {},
   ): Room {
     const existing = this.rooms.get(roomId);
     if (existing) return existing;
@@ -79,6 +92,8 @@ export class RoomStore {
       revision: 0,
       ownerId,
       isNew,
+      name,
+      thumbnail,
       emptySince: this.now(),
     };
     for (const stroke of strokes) room.seqById.set(stroke.id, room.nextSeq++);
@@ -216,6 +231,7 @@ export class RoomStore {
     room.undoStacks.clear();
     room.redoStacks.clear();
     room.pointCount = 0;
+    room.thumbnail = null;
     room.revision++;
     return true;
   }
@@ -228,6 +244,29 @@ export class RoomStore {
     room.ownerId = ownerId;
     room.revision++; // save the (possibly still empty) board so it exists from now on
     return true;
+  }
+
+  /** Already-cleaned name (see cleanBoardName). Returns false if unchanged or no such board. */
+  rename(roomId: string, name: string): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room || room.name === name) return false;
+    room.name = name;
+    room.revision++;
+    return true;
+  }
+
+  /** Already-validated thumbnail (see isValidThumbnail). Returns false if unchanged. */
+  setThumbnail(roomId: string, thumbnail: string): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room || room.thumbnail === thumbnail) return false;
+    room.thumbnail = thumbnail;
+    room.revision++;
+    return true;
+  }
+
+  /** Drop a board from memory immediately (it was deleted). */
+  remove(roomId: string): boolean {
+    return this.rooms.delete(roomId);
   }
 
   /**

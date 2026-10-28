@@ -107,6 +107,11 @@ body {
   cursor: text;
 }
 
+/* Name you can't change (only the board's owner can). */
+.board-name-static {
+  cursor: default;
+}
+
 .board-name:hover {
   border-color: var(--line);
 }

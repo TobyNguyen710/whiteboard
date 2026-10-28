@@ -240,6 +240,44 @@ describe("RoomStore", () => {
     });
   });
 
+  describe("name, preview, and deletion", () => {
+    const thumb = "data:image/jpeg;base64,AAAA";
+
+    it("starts with the default name and no preview, or the saved ones", () => {
+      expect(store.get(ROOM)).toMatchObject({ name: "Untitled board", thumbnail: null });
+      expect(store.create("named1234", [], { name: "Plans", thumbnail: thumb })).toMatchObject({
+        name: "Plans",
+        thumbnail: thumb,
+      });
+    });
+
+    it("renames, bumping the revision only when the name changes", () => {
+      const room = store.get(ROOM)!;
+      expect(store.rename(ROOM, "Plans")).toBe(true);
+      expect(room.name).toBe("Plans");
+      const revision = room.revision;
+      expect(store.rename(ROOM, "Plans")).toBe(false);
+      expect(room.revision).toBe(revision);
+    });
+
+    it("updates the preview only when it changed", () => {
+      expect(store.setThumbnail(ROOM, thumb)).toBe(true);
+      expect(store.setThumbnail(ROOM, thumb)).toBe(false);
+    });
+
+    it("clearing the board clears its preview", () => {
+      store.setThumbnail(ROOM, thumb);
+      store.clear(ROOM, "alice");
+      expect(store.get(ROOM)!.thumbnail).toBeNull();
+    });
+
+    it("removes a deleted board from memory", () => {
+      expect(store.remove(ROOM)).toBe(true);
+      expect(store.get(ROOM)).toBeUndefined();
+      expect(store.rename(ROOM, "Gone")).toBe(false);
+    });
+  });
+
   describe("clear", () => {
     it("wipes strokes and everyone's undo/redo history", () => {
       store.startStroke(ROOM, "alice", start("a1"));

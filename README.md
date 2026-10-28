@@ -17,6 +17,7 @@ I wanted to understand how tools like Figma and Excalidraw keep everyone's view 
 - **Late join:** open a board mid-session and see everything drawn so far.
 - **Tools:** 8 colors plus a custom picker, brush sizes 1–100 with a live preview, eraser, clear board.
 - **Undo / redo** for your own strokes (Ctrl+Z / Ctrl+Y), synced for everyone.
+- **Accounts:** sign in with Google or GitHub to create boards and find them again on any device (My boards, Shared with me). Guests can join boards from a link.
 - **Works everywhere:** mouse, touch, and pen; the board scales to any screen and looks the same on all of them.
 
 ## How it works
@@ -56,7 +57,7 @@ shared/   Shared TypeScript types (socket events, Stroke, limits)
 
 ## Getting started
 
-Requires Node 22.12+.
+Requires Node 22.12+ or 24.
 
 ```bash
 npm install

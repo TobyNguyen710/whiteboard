@@ -1,9 +1,8 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link } from "react-router";
-import type { Participant } from "@whiteboard/shared";
+import { MAX_BOARD_NAME_LENGTH, type Participant } from "@whiteboard/shared";
 import { AccountMenu } from "./AccountMenu";
 import { ParticipantList } from "./ParticipantList";
-import { MAX_NAME_LENGTH } from "./recentBoards";
 import type { ConnectionStatus } from "./useRoomConnection";
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
@@ -14,7 +13,8 @@ const STATUS_LABELS: Record<ConnectionStatus, string> = {
 
 type Props = {
   name: string;
-  onRename: (name: string) => void;
+  /** Unset when you can't rename this board (only its owner can). */
+  onRename?: (name: string) => void;
   status: ConnectionStatus;
   users: Participant[];
   selfId: string | null;
@@ -46,7 +46,7 @@ export function BoardTopBar({
   const finishEditing = () => {
     setEditing(false);
     if (cancelledRef.current) cancelledRef.current = false;
-    else if (draft !== name) onRename(draft);
+    else if (draft !== name) onRename?.(draft);
   };
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -93,17 +93,19 @@ export function BoardTopBar({
               autoFocus
               className="board-name-input"
               aria-label="Board name"
-              maxLength={MAX_NAME_LENGTH}
+              maxLength={MAX_BOARD_NAME_LENGTH}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onBlur={finishEditing}
               onKeyDown={onKeyDown}
             />
           </form>
-        ) : (
+        ) : onRename ? (
           <button type="button" className="board-name" title="Rename board" onClick={startEditing}>
             {name}
           </button>
+        ) : (
+          <span className="board-name board-name-static">{name}</span>
         )}
       </div>
 

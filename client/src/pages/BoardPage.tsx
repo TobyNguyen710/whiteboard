@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router";
-import { isValidRoomId } from "@whiteboard/shared";
+import { cleanBoardName as cleanSharedBoardName, DEFAULT_BOARD_NAME, isValidRoomId } from "@whiteboard/shared";
 import { useAuth } from "../auth";
 import { BoardTopBar } from "../BoardTopBar";
 import { Canvas, type CanvasHandle } from "../Canvas";
@@ -32,12 +32,16 @@ export function BoardPage() {
 }
 
 function Board({ roomId }: { roomId: string }) {
-  const { account, signOut } = useAuth();
+  const { enabled: accounts, account, signOut } = useAuth();
   const [guestName, setGuestNameState] = useState(getGuestName);
-  const { status, socket, users, selfId, problem } = useRoomConnection(roomId);
+  const { status, socket, users, selfId, problem, boardName, isOwner } = useRoomConnection(roomId);
   const [settings, setSettings] = useState<ToolSettings>(loadSettings);
-  const [name, setName] = useState(() => recordVisit(roomId).name);
+  // Without accounts (login not configured), names and previews are kept in this browser.
+  const [localName, setLocalName] = useState(() => (accounts ? DEFAULT_BOARD_NAME : recordVisit(roomId).name));
+  const name = accounts ? (boardName ?? DEFAULT_BOARD_NAME) : localName;
+  const canRename = accounts ? isOwner : true;
   const canvasRef = useRef<CanvasHandle>(null);
+  const lastSentThumbnailRef = useRef<string | null>(null);
   const connected = status === "connected";
 
   // The server rejected our login (expired or revoked): sign out and come back as a guest.
@@ -57,12 +61,20 @@ function Board({ roomId }: { roomId: string }) {
     };
   }, [name]);
 
-  // Keep the dashboard thumbnail fresh: every so often, when the tab is hidden, and on leaving.
+  // Keep the dashboard preview fresh: every so often, when the tab is hidden, and on leaving.
+  // With accounts it's sent to the server (only when it changed); otherwise kept in this browser.
   const captureThumbnail = useCallback(() => {
     const thumbnail = canvasRef.current?.getThumbnail();
-    // undefined = board not loaded yet: keep whatever thumbnail we had.
-    if (thumbnail !== undefined) saveThumbnail(roomId, thumbnail);
-  }, [roomId]);
+    // undefined = board not loaded yet: keep whatever preview we had.
+    if (thumbnail === undefined) return;
+    if (!accounts) {
+      saveThumbnail(roomId, thumbnail);
+      return;
+    }
+    if (!account || !socket?.connected || !thumbnail || thumbnail === lastSentThumbnailRef.current) return;
+    lastSentThumbnailRef.current = thumbnail;
+    socket.emit("board:thumbnail", { image: thumbnail });
+  }, [accounts, account, roomId, socket]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -88,8 +100,14 @@ function Board({ roomId }: { roomId: string }) {
   };
 
   const rename = (next: string) => {
+    if (accounts) {
+      // The server checks you're the owner and tells everyone on the board.
+      const cleaned = cleanSharedBoardName(next);
+      if (cleaned && isOwner) socket?.emit("board:rename", { name: cleaned });
+      return;
+    }
     const cleaned = cleanBoardName(next);
-    setName(cleaned);
+    setLocalName(cleaned);
     renameBoard(roomId, cleaned);
   };
 
@@ -111,13 +129,15 @@ function Board({ roomId }: { roomId: string }) {
     socket?.emit("user:rename", { name: cleaned });
   };
 
-  if (problem === "not-found") return <BoardNotFound />;
+  if (problem === "not-found" || problem === "deleted") {
+    return <BoardNotFound deleted={problem === "deleted"} />;
+  }
 
   return (
     <div className="board-page">
       <BoardTopBar
         name={name}
-        onRename={rename}
+        onRename={canRename ? rename : undefined}
         status={status}
         users={users}
         selfId={selfId}
@@ -145,14 +165,14 @@ function Board({ roomId }: { roomId: string }) {
   );
 }
 
-function BoardNotFound() {
+function BoardNotFound({ deleted }: { deleted: boolean }) {
   const { enabled, account } = useAuth();
   return (
     <div className="message-page">
       <Logo />
-      <h1>This board doesn't exist</h1>
+      <h1>{deleted ? "This board was deleted" : "This board doesn't exist"}</h1>
       <p>
-        The link may be wrong, or the board was deleted.
+        {deleted ? "Its owner deleted it." : "The link may be wrong, or the board was deleted."}
         {enabled && !account && " Sign in to create your own boards."}
       </p>
       {enabled && !account && <SignInButtons />}
