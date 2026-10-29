@@ -10,6 +10,8 @@ type Props = {
   onUndo: () => void;
   onRedo: () => void;
   onClear: () => void;
+  /** Only the host (or anyone, on boards without a host) can clear for everyone. */
+  canClear: boolean;
 };
 
 const ERASER_DOT_COLOR = "#adb5bd";
@@ -76,7 +78,7 @@ function RedoIcon() {
   );
 }
 
-export function Toolbar({ settings, onChange, connected, onUndo, onRedo, onClear }: Props) {
+export function Toolbar({ settings, onChange, connected, onUndo, onRedo, onClear, canClear }: Props) {
   const [confirmingClear, setConfirmingClear] = useState(false);
   const isPreset = (COLORS as readonly string[]).includes(settings.color);
   const isPen = settings.tool === "pen";
@@ -205,43 +207,45 @@ export function Toolbar({ settings, onChange, connected, onUndo, onRedo, onClear
         </span>
       </div>
 
-      <div className="tool-divider" aria-hidden="true" />
+      {canClear && <div className="tool-divider" aria-hidden="true" />}
 
-      <div className="tool-group">
-        {confirmingClear ? (
-          <>
-            <span className="clear-prompt">Clear for everyone?</span>
-            <button
-              type="button"
-              className="text-button danger"
-              disabled={!connected}
-              onClick={() => {
-                onClear();
-                setConfirmingClear(false);
-              }}
-            >
-              Clear
-            </button>
+      {canClear && (
+        <div className="tool-group">
+          {confirmingClear ? (
+            <>
+              <span className="clear-prompt">Clear for everyone?</span>
+              <button
+                type="button"
+                className="text-button danger"
+                disabled={!connected}
+                onClick={() => {
+                  onClear();
+                  setConfirmingClear(false);
+                }}
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => setConfirmingClear(false)}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
             <button
               type="button"
               className="text-button"
-              onClick={() => setConfirmingClear(false)}
+              disabled={!connected}
+              title={connected ? "Clear the board for everyone" : "Connect to clear the board"}
+              onClick={() => setConfirmingClear(true)}
             >
-              Cancel
+              Clear board
             </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="text-button"
-            disabled={!connected}
-            title={connected ? "Clear the board for everyone" : "Connect to clear the board"}
-            onClick={() => setConfirmingClear(true)}
-          >
-            Clear board
-          </button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { accountDisplay, type HandshakeAuth } from "@whiteboard/shared";
-import { getGuestName } from "./guestName";
+import { getGuestId, getGuestName } from "./guestName";
 import { supabase } from "./supabase";
 
 export type LoginProvider = "google" | "github";
@@ -74,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
  */
 export async function currentHandshakeAuth(): Promise<HandshakeAuth> {
   const session = supabase ? (await supabase.auth.getSession()).data.session : null;
-  return session ? { token: session.access_token } : { guestName: getGuestName() };
+  return session ? { token: session.access_token } : { guestName: getGuestName(), guestId: getGuestId() };
 }
 
 export function useAuth(): AuthState {

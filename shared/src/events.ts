@@ -1,4 +1,5 @@
 import type { Participant } from "./participant.js";
+import type { AssignableRole, Role } from "./roles.js";
 import type { Point, Stroke, Tool } from "./types.js";
 
 export type StrokeStartPayload = {
@@ -28,6 +29,8 @@ export interface ClientToServerEvents {
   "board:rename": (payload: { name: string }) => void;
   /** A fresh preview of the board for dashboards (signed-in users on the board). */
   "board:thumbnail": (payload: { image: string }) => void;
+  /** Host only: change someone's role. `participantId` is their connection ID from room:users. */
+  "member:set-role": (payload: { participantId: string; role: AssignableRole }) => void;
 }
 
 /** Why the server refused to put you on a board. */
@@ -36,8 +39,13 @@ export type RoomErrorReason =
   "not-found";
 
 export interface ServerToClientEvents {
-  /** Sent when you join: the board's drawing, its name, and whether you own it. */
-  "room:state": (payload: { strokes: Stroke[]; name: string; isOwner: boolean }) => void;
+  /**
+   * Sent when you join: the board's drawing, its name, your role, and whether the board has a
+   * host (boards from before accounts don't).
+   */
+  "room:state": (payload: { strokes: Stroke[]; name: string; role: Role; hasHost: boolean }) => void;
+  /** Your role changed (the host changed it). */
+  "member:role": (payload: { role: Role }) => void;
   "board:renamed": (payload: { name: string }) => void;
   /** The owner deleted the board. Everyone on it is removed. */
   "board:deleted": (payload: Record<string, never>) => void;

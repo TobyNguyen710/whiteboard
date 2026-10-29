@@ -99,14 +99,14 @@ const api = (path: string, method: string, token?: string, body?: unknown) =>
   });
 
 describe("joining", () => {
-  it("tells you the board's name and whether you own it", async () => {
+  it("tells you the board's name and your role (the owner is the host)", async () => {
     const { state } = await aliceCreates("join1234");
-    expect(state).toMatchObject({ name: "Untitled board", isOwner: true });
+    expect(state).toMatchObject({ name: "Untitled board", role: "host", hasHost: true });
 
     const { state: bobState } = await join("join1234", { token: "bob-token" });
-    expect(bobState.isOwner).toBe(false);
+    expect(bobState.role).toBe("editor");
     const { state: guestState } = await join("join1234", { guestName: "Guest" });
-    expect(guestState.isOwner).toBe(false);
+    expect(guestState.role).toBe("editor");
   });
 
   it("saves a new board right away and adds it to the creator's list", async () => {

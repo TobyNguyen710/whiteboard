@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
-import type { Participant } from "@whiteboard/shared";
+import { DEFAULT_ROLE, type Participant, type Role } from "@whiteboard/shared";
 import { currentHandshakeAuth } from "./auth";
 import { getServerUrl, type BoardSocket } from "./socket";
 
@@ -28,8 +28,10 @@ export type RoomConnection = {
   problem: ConnectionProblem | null;
   /** The board's name from the server, once joined (null before, or without a server). */
   boardName: string | null;
-  /** True if you own this board (only owners rename or delete it). */
-  isOwner: boolean;
+  /** Your role on the board (the owner is the host). */
+  role: Role;
+  /** False for boards from before accounts, which have no host. */
+  hasHost: boolean;
 };
 
 const AUTH_RETRY_MS = 5_000;
@@ -53,7 +55,8 @@ export function useRoomConnection(roomId: string): RoomConnection {
   const [selfId, setSelfId] = useState<string | null>(null);
   const [problem, setProblem] = useState<ConnectionProblem | null>(null);
   const [boardName, setBoardName] = useState<string | null>(null);
-  const [isOwner, setIsOwner] = useState(false);
+  const [role, setRole] = useState<Role>(DEFAULT_ROLE);
+  const [hasHost, setHasHost] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -81,10 +84,12 @@ export function useRoomConnection(roomId: string): RoomConnection {
     };
     const onUsers = ({ users: next }: { users: Participant[] }) => setUsers(next);
     const onRoomError = ({ reason }: { reason: "not-found" }) => setProblem(reason);
-    const onState = ({ name, isOwner: owner }: { name: string; isOwner: boolean }) => {
-      setBoardName(name);
-      setIsOwner(owner);
+    const onState = (state: { name: string; role: Role; hasHost: boolean }) => {
+      setBoardName(state.name);
+      setRole(state.role);
+      setHasHost(state.hasHost);
     };
+    const onRole = ({ role: next }: { role: Role }) => setRole(next);
     const onRenamed = ({ name }: { name: string }) => setBoardName(name);
     const onDeleted = () => setProblem("deleted");
 
@@ -96,6 +101,7 @@ export function useRoomConnection(roomId: string): RoomConnection {
     socket.on("room:state", onState);
     socket.on("board:renamed", onRenamed);
     socket.on("board:deleted", onDeleted);
+    socket.on("member:role", onRole);
     socket.connect();
 
     return () => {
@@ -110,8 +116,9 @@ export function useRoomConnection(roomId: string): RoomConnection {
       socket.off("room:state", onState);
       socket.off("board:renamed", onRenamed);
       socket.off("board:deleted", onDeleted);
+      socket.off("member:role", onRole);
     };
   }, [socket, roomId]);
 
-  return { status, socket, users, selfId, problem, boardName, isOwner };
+  return { status, socket, users, selfId, problem, boardName, role, hasHost };
 }

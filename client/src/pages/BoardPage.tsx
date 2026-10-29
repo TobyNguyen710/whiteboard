@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, Navigate, useParams } from "react-router";
-import { cleanBoardName as cleanSharedBoardName, DEFAULT_BOARD_NAME, isValidRoomId } from "@whiteboard/shared";
+import {
+  cleanBoardName as cleanSharedBoardName,
+  DEFAULT_BOARD_NAME,
+  isValidRoomId,
+  permissionsFor,
+  type AssignableRole,
+} from "@whiteboard/shared";
 import { useAuth } from "../auth";
 import { BoardTopBar } from "../BoardTopBar";
 import { Canvas, type CanvasHandle } from "../Canvas";
@@ -34,12 +40,13 @@ export function BoardPage() {
 function Board({ roomId }: { roomId: string }) {
   const { enabled: accounts, account, signOut } = useAuth();
   const [guestName, setGuestNameState] = useState(getGuestName);
-  const { status, socket, users, selfId, problem, boardName, isOwner } = useRoomConnection(roomId);
+  const { status, socket, users, selfId, problem, boardName, role, hasHost } = useRoomConnection(roomId);
+  const permissions = permissionsFor(role, hasHost);
   const [settings, setSettings] = useState<ToolSettings>(loadSettings);
   // Without accounts (login not configured), names and previews are kept in this browser.
   const [localName, setLocalName] = useState(() => (accounts ? DEFAULT_BOARD_NAME : recordVisit(roomId).name));
   const name = accounts ? (boardName ?? DEFAULT_BOARD_NAME) : localName;
-  const canRename = accounts ? isOwner : true;
+  const canRename = accounts ? permissions.canManageBoard : true;
   const canvasRef = useRef<CanvasHandle>(null);
   const lastSentThumbnailRef = useRef<string | null>(null);
   const connected = status === "connected";
@@ -103,7 +110,7 @@ function Board({ roomId }: { roomId: string }) {
     if (accounts) {
       // The server checks you're the owner and tells everyone on the board.
       const cleaned = cleanSharedBoardName(next);
-      if (cleaned && isOwner) socket?.emit("board:rename", { name: cleaned });
+      if (cleaned && permissions.canManageBoard) socket?.emit("board:rename", { name: cleaned });
       return;
     }
     const cleaned = cleanBoardName(next);
@@ -113,12 +120,17 @@ function Board({ roomId }: { roomId: string }) {
 
   // The canvas updates when the server broadcasts the result back to everyone (including us).
   const clearBoard = () => socket?.emit("board:clear", { roomId });
+  const { canDraw } = permissions;
   const undo = useCallback(() => {
-    if (socket?.connected) socket.emit("stroke:undo");
-  }, [socket]);
+    if (canDraw && socket?.connected) socket.emit("stroke:undo");
+  }, [canDraw, socket]);
   const redo = useCallback(() => {
-    if (socket?.connected) socket.emit("stroke:redo");
-  }, [socket]);
+    if (canDraw && socket?.connected) socket.emit("stroke:redo");
+  }, [canDraw, socket]);
+
+  // Host only (the server checks): make someone an editor or a viewer.
+  const setRole = (participantId: string, next: AssignableRole) =>
+    socket?.emit("member:set-role", { participantId, role: next });
 
   useUndoShortcuts(undo, redo);
 
@@ -143,6 +155,9 @@ function Board({ roomId }: { roomId: string }) {
         selfId={selfId}
         guestName={account ? undefined : guestName}
         onGuestRename={account ? undefined : renameGuest}
+        canManagePeople={permissions.canManagePeople}
+        onSetRole={setRole}
+        viewOnly={!canDraw}
       />
       <div className="board-area">
         <Canvas
@@ -151,16 +166,20 @@ function Board({ roomId }: { roomId: string }) {
           tool={settings.tool}
           color={settings.color}
           size={settings.size}
+          readOnly={!canDraw}
         />
       </div>
-      <Toolbar
-        settings={settings}
-        onChange={changeSettings}
-        connected={connected}
-        onUndo={undo}
-        onRedo={redo}
-        onClear={clearBoard}
-      />
+      {canDraw && (
+        <Toolbar
+          settings={settings}
+          onChange={changeSettings}
+          connected={connected}
+          onUndo={undo}
+          onRedo={redo}
+          onClear={clearBoard}
+          canClear={permissions.canClear}
+        />
+      )}
     </div>
   );
 }

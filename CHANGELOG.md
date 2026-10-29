@@ -22,6 +22,8 @@ All notable changes to this project are documented here. Format based on [Keep a
 - Board previews are saved with the board (sent by signed-in people on it), so dashboard thumbnails look right anywhere. Clearing a board clears its preview.
 - Server API for dashboard actions (`PATCH`/`DELETE /api/boards/:id`, `DELETE /api/boards/:id/membership`), checked by login and ownership, with CORS limited to the site.
 - Database: `board_members` table and board thumbnails, with row-level security so signed-in users can only read their own boards and memberships.
+- Roles on boards: the owner is the host; everyone else is an editor (can draw) or a viewer (watch only). The host changes roles from the people list, and the server enforces them: viewers can't draw, erase, or undo, and only the host can clear the board (boards from before accounts keep the old rule). Shown as role labels, with a "View only" label and no toolbar for viewers.
+- Roles are remembered: in the database for signed-in members, and by a random guest ID kept in the browser for guests.
 
 ### Security
 - Upgraded dev tooling to clear all `npm audit` findings (7 → 0): Vite 5 → 8, Vitest 3 → 5, @vitejs/plugin-react 4 → 6. The issues were in the dev server and test runner only; production dependencies already had none. Removed the Vite version pin added for Vitest 3.

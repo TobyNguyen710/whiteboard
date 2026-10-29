@@ -1,6 +1,7 @@
-import { cleanDisplayName } from "@whiteboard/shared";
+import { cleanDisplayName, isValidGuestId } from "@whiteboard/shared";
 
 const STORAGE_KEY = "whiteboard:guest-name";
+const ID_STORAGE_KEY = "whiteboard:guest-id";
 
 const ADJECTIVES = ["Teal", "Amber", "Coral", "Indigo", "Mint", "Ruby", "Sky", "Golden", "Violet", "Jade"];
 const ANIMALS = ["Otter", "Fox", "Panda", "Koala", "Heron", "Lynx", "Robin", "Gecko", "Bison", "Moth"];
@@ -35,4 +36,17 @@ export function setGuestName(name: string): string | null {
     // Not remembered after a refresh, but still used for this session.
   }
   return cleaned;
+}
+
+/** A random ID this browser keeps as a guest, so a refresh keeps your role on a board. */
+export function getGuestId(): string {
+  try {
+    const saved = localStorage.getItem(ID_STORAGE_KEY);
+    if (isValidGuestId(saved)) return saved;
+    const id = crypto.randomUUID();
+    localStorage.setItem(ID_STORAGE_KEY, id);
+    return id;
+  } catch {
+    return crypto.randomUUID();
+  }
 }

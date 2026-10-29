@@ -315,7 +315,7 @@ describe("accounts and guests", () => {
     const alice = await connectAs({ token: "alice-token" });
     alice.emit("room:join", { roomId: "names1234" });
     const { users } = await next(alice, "room:users");
-    expect(users).toEqual([{ id: alice.id, name: "Alice Smith", avatarUrl: ALICE.avatarUrl, isGuest: false }]);
+    expect(users).toEqual([{ id: alice.id, name: "Alice Smith", avatarUrl: ALICE.avatarUrl, isGuest: false, role: "host" }]);
   });
 
   it("shows guests with their cleaned-up chosen name", async () => {
@@ -323,7 +323,7 @@ describe("accounts and guests", () => {
     alice.emit("room:join", { roomId: "names5678" });
     await next(alice, "room:state");
 
-    const guest = await connectAs({ guestName: "   Teal    Otter  " });
+    const guest = await connectAs({ guestName: "   Teal\u0000   Otter  " });
     guest.emit("room:join", { roomId: "names5678" });
     const { users } = await next(guest, "room:users", (p) => p.count === 2);
     expect(users.find((u) => u.id === guest.id)).toEqual({
@@ -331,6 +331,7 @@ describe("accounts and guests", () => {
       name: "Teal Otter",
       avatarUrl: null,
       isGuest: true,
+      role: "editor",
     });
   });
 

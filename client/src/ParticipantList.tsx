@@ -1,18 +1,27 @@
-import type { Participant } from "@whiteboard/shared";
+import type { AssignableRole, Participant, Role } from "@whiteboard/shared";
 import { Avatar } from "./Avatar";
 import { usePopover } from "./usePopover";
 
 const MAX_SHOWN = 4;
 
-type Props = { users: Participant[]; selfId: string | null };
+const ROLE_LABELS: Record<Role, string> = { host: "Host", editor: "Can draw", viewer: "View only" };
 
-/** Overlapping avatars of everyone on the board; click for the full list. */
-export function ParticipantList({ users, selfId }: Props) {
+type Props = {
+  users: Participant[];
+  selfId: string | null;
+  /** The host can change other people's roles. */
+  canManagePeople: boolean;
+  onSetRole: (participantId: string, role: AssignableRole) => void;
+};
+
+/** Overlapping avatars of everyone on the board; click for the full list (and role controls). */
+export function ParticipantList({ users, selfId, canManagePeople, onSetRole }: Props) {
   const { open, toggle, ref } = usePopover<HTMLDivElement>();
   if (users.length === 0) return null;
 
-  // You first, then everyone else in join order.
-  const ordered = [...users].sort((a, b) => Number(b.id === selfId) - Number(a.id === selfId));
+  // You first, then the host, then everyone else in join order.
+  const rank = (u: Participant) => (u.id === selfId ? 0 : u.role === "host" ? 1 : 2);
+  const ordered = [...users].sort((a, b) => rank(a) - rank(b));
   const shown = ordered.slice(0, MAX_SHOWN);
   const extra = ordered.length - shown.length;
   const label = `${users.length} ${users.length === 1 ? "person" : "people"} on this board`;
@@ -30,15 +39,37 @@ export function ParticipantList({ users, selfId }: Props) {
         <div className="popover participant-popover" role="dialog" aria-label="People on this board">
           <p className="popover-title">{label}</p>
           <ul className="participant-list">
-            {ordered.map((user) => (
-              <li key={user.id}>
-                <Avatar name={user.name} avatarUrl={user.avatarUrl} size={26} />
-                <span className="participant-name">{user.name}</span>
-                {user.id === selfId && <span className="participant-tag">you</span>}
-                {user.isGuest && user.id !== selfId && <span className="participant-tag">guest</span>}
-              </li>
-            ))}
+            {ordered.map((user) => {
+              const isSelf = user.id === selfId;
+              const editable = canManagePeople && !isSelf && user.role !== "host";
+              return (
+                <li key={user.id}>
+                  <Avatar name={user.name} avatarUrl={user.avatarUrl} size={26} />
+                  <span className="participant-name">
+                    {user.name}
+                    {isSelf && <span className="participant-sub"> (you)</span>}
+                    {user.isGuest && !isSelf && <span className="participant-sub"> · guest</span>}
+                  </span>
+                  {editable ? (
+                    <select
+                      className="role-select"
+                      aria-label={`Role for ${user.name}`}
+                      value={user.role}
+                      onChange={(e) => onSetRole(user.id, e.target.value as AssignableRole)}
+                    >
+                      <option value="editor">{ROLE_LABELS.editor}</option>
+                      <option value="viewer">{ROLE_LABELS.viewer}</option>
+                    </select>
+                  ) : (
+                    <span className={`participant-tag role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
+          {canManagePeople && users.length > 1 && (
+            <p className="popover-hint">People who can draw can also undo their own strokes. Only you can clear.</p>
+          )}
         </div>
       )}
     </div>

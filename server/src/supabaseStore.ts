@@ -1,5 +1,11 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { cleanBoardName, DEFAULT_BOARD_NAME, isValidThumbnail } from "@whiteboard/shared";
+import {
+  cleanBoardName,
+  DEFAULT_BOARD_NAME,
+  isAssignableRole,
+  isValidThumbnail,
+  type AssignableRole,
+} from "@whiteboard/shared";
 import type { BoardMeta, BoardStore, SavedBoard } from "./persistence.js";
 import { parseStoredStrokes } from "./validate.js";
 
@@ -25,11 +31,25 @@ export class SupabaseBoardStore implements BoardStore {
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
+
+    // Only members whose role isn't the default need loading.
+    const roles = await this.db
+      .from("board_members")
+      .select("user_id, role")
+      .eq("board_id", boardId)
+      .neq("role", "editor");
+    if (roles.error) throw new Error(roles.error.message);
+    const memberRoles: Record<string, AssignableRole> = {};
+    for (const row of roles.data ?? []) {
+      if (typeof row.user_id === "string" && isAssignableRole(row.role)) memberRoles[row.user_id] = row.role;
+    }
+
     return {
       strokes: parseStoredStrokes(data.strokes),
       ownerId: typeof data.owner_id === "string" ? data.owner_id : null,
       name: cleanBoardName(data.name) ?? DEFAULT_BOARD_NAME,
       thumbnail: isValidThumbnail(data.thumbnail) ? data.thumbnail : null,
+      memberRoles,
     };
   }
 
@@ -86,6 +106,14 @@ export class SupabaseBoardStore implements BoardStore {
       .delete()
       .eq("board_id", boardId)
       .eq("user_id", userId);
+    if (error) throw new Error(error.message);
+  }
+
+  async setMemberRole(boardId: string, userId: string, role: AssignableRole): Promise<void> {
+    // Upsert only the role: an existing member keeps their last-opened time.
+    const { error } = await this.db
+      .from("board_members")
+      .upsert({ board_id: boardId, user_id: userId, role }, { onConflict: "board_id,user_id" });
     if (error) throw new Error(error.message);
   }
 

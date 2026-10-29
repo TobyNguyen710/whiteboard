@@ -1,4 +1,4 @@
-import { DEFAULT_BOARD_NAME, type Stroke } from "@whiteboard/shared";
+import { DEFAULT_BOARD_NAME, type AssignableRole, type Stroke } from "@whiteboard/shared";
 import type { RoomStore } from "./rooms.js";
 
 export type SavedBoard = {
@@ -6,6 +6,8 @@ export type SavedBoard = {
   ownerId?: string | null;
   name?: string;
   thumbnail?: string | null;
+  /** Roles the host gave signed-in members, by account ID (only non-default roles). */
+  memberRoles?: Record<string, AssignableRole>;
 };
 
 /** Just enough to check permissions without loading the drawing. */
@@ -25,6 +27,8 @@ export interface BoardStore {
   recordVisit(boardId: string, userId: string): Promise<void>;
   /** Take the board off this account's lists (it reappears if they open it again). */
   removeMember(boardId: string, userId: string): Promise<void>;
+  /** Save a signed-in member's role on a board. */
+  setMemberRole(boardId: string, userId: string, role: AssignableRole): Promise<void>;
   /** Cheap request that throws if the store can't be reached. */
   ping(): Promise<void>;
 }
@@ -34,14 +38,24 @@ export class MemoryBoardStore implements BoardStore {
   readonly boards = new Map<string, string>();
   /** "boardId userId" -> last opened (ms). */
   readonly members = new Map<string, number>();
+  /** "boardId userId" -> role, for members whose role isn't the default. */
+  readonly roles = new Map<string, AssignableRole>();
 
   async load(boardId: string): Promise<SavedBoard | null> {
     const json = this.boards.get(boardId);
-    return json ? (JSON.parse(json) as SavedBoard) : null;
+    if (!json) return null;
+    const board = JSON.parse(json) as SavedBoard;
+    const memberRoles: Record<string, AssignableRole> = {};
+    for (const [key, role] of this.roles) {
+      if (key.startsWith(`${boardId} `)) memberRoles[key.slice(boardId.length + 1)] = role;
+    }
+    return { ...board, memberRoles };
   }
 
   async save(boardId: string, board: SavedBoard): Promise<void> {
-    this.boards.set(boardId, JSON.stringify(board));
+    // Roles are stored separately (like the board_members table), not with the drawing.
+    const { memberRoles: _roles, ...rest } = board;
+    this.boards.set(boardId, JSON.stringify(rest));
   }
 
   async loadMeta(boardId: string): Promise<BoardMeta | null> {
@@ -57,6 +71,7 @@ export class MemoryBoardStore implements BoardStore {
   async remove(boardId: string): Promise<void> {
     this.boards.delete(boardId);
     for (const key of this.members.keys()) if (key.startsWith(`${boardId} `)) this.members.delete(key);
+    for (const key of this.roles.keys()) if (key.startsWith(`${boardId} `)) this.roles.delete(key);
   }
 
   async recordVisit(boardId: string, userId: string): Promise<void> {
@@ -66,6 +81,13 @@ export class MemoryBoardStore implements BoardStore {
 
   async removeMember(boardId: string, userId: string): Promise<void> {
     this.members.delete(`${boardId} ${userId}`);
+    this.roles.delete(`${boardId} ${userId}`);
+  }
+
+  async setMemberRole(boardId: string, userId: string, role: AssignableRole): Promise<void> {
+    if (!this.boards.has(boardId)) throw new Error("board must be saved before setting roles");
+    if (role === "editor") this.roles.delete(`${boardId} ${userId}`);
+    else this.roles.set(`${boardId} ${userId}`, role);
   }
 
   async ping(): Promise<void> {}
@@ -113,6 +135,9 @@ export class BoardSaver {
         isNew: saved === null,
         name: saved?.name,
         thumbnail: saved?.thumbnail ?? null,
+        memberRoles: new Map(
+          Object.entries(saved?.memberRoles ?? {}).map(([accountId, role]) => [`a:${accountId}`, role]),
+        ),
       });
       this.savedRevisions.set(roomId, room.revision);
     } catch (error) {

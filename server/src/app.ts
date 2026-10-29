@@ -4,8 +4,12 @@ import {
   cleanBoardName,
   cleanDisplayName,
   DEFAULT_GUEST_NAME,
+  isAssignableRole,
+  isValidGuestId,
   isValidRoomId,
   isValidThumbnail,
+  permissionsFor,
+  type Permissions,
   type ClientToServerEvents,
   type Participant,
   type ServerToClientEvents,
@@ -17,7 +21,13 @@ import { RoomStore } from "./rooms.js";
 import { parseStrokeEnd, parseStrokePoints, parseStrokeStart } from "./validate.js";
 
 /** Who is behind a connection: a verified account, or a guest with a chosen name. */
-type SocketUser = { accountId: string | null; name: string; avatarUrl: string | null };
+type SocketUser = {
+  accountId: string | null;
+  name: string;
+  avatarUrl: string | null;
+  /** Who this is for roles: "a:<account id>", "g:<guest id>", or "c:<connection id>". */
+  memberKey: string;
+};
 
 type SocketData = { roomId?: string; user: SocketUser };
 
@@ -97,7 +107,13 @@ export function createWhiteboardServer({
     for (const id of ids) {
       const user = io.sockets.sockets.get(id)?.data.user;
       if (!user) continue;
-      list.push({ id, name: user.name, avatarUrl: user.avatarUrl, isGuest: user.accountId === null });
+      list.push({
+        id,
+        name: user.name,
+        avatarUrl: user.avatarUrl,
+        isGuest: user.accountId === null,
+        role: rooms.roleOf(roomId, user.memberKey, user.accountId),
+      });
     }
     return list;
   };
@@ -105,6 +121,15 @@ export function createWhiteboardServer({
   const broadcastUsers = (roomId: string) => {
     const users = participants(roomId);
     io.to(roomId).emit("room:users", { count: users.length, users });
+  };
+
+  /** What this connection may do on the board it's on (nothing if it isn't on one). */
+  const permissionsOf = (socket: { id: string; data: SocketData }): Permissions | null => {
+    const roomId = socket.data.roomId;
+    const room = roomId ? rooms.get(roomId) : undefined;
+    if (!roomId || !room || !room.users.has(socket.id)) return null;
+    const { memberKey, accountId } = socket.data.user;
+    return permissionsFor(rooms.roleOf(roomId, memberKey, accountId), room.ownerId !== null);
   };
 
   // ---------- Board actions, shared by the board itself and the dashboard API ----------
@@ -173,7 +198,12 @@ export function createWhiteboardServer({
         // A bad or expired token is refused outright, so the client can refresh or sign out
         // instead of silently becoming a guest.
         if (!user) return next(new Error("unauthorized"));
-        socket.data.user = { accountId: user.id, name: user.name, avatarUrl: user.avatarUrl };
+        socket.data.user = {
+          accountId: user.id,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+          memberKey: `a:${user.id}`,
+        };
         return next();
       } catch (error) {
         log(`login check failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -185,6 +215,8 @@ export function createWhiteboardServer({
       accountId: null,
       name: cleanDisplayName(auth.guestName) ?? DEFAULT_GUEST_NAME,
       avatarUrl: null,
+      // A guest ID from the browser keeps a guest's role across refreshes; otherwise per connection.
+      memberKey: isValidGuestId(auth.guestId) ? `g:${auth.guestId.toLowerCase()}` : `c:${socket.id}`,
     };
     next();
   });
@@ -236,7 +268,8 @@ export function createWhiteboardServer({
       socket.emit("room:state", {
         strokes: room.strokes,
         name: room.name,
-        isOwner: accountId !== null && room.ownerId === accountId,
+        role: rooms.roleOf(roomId, socket.data.user.memberKey, accountId),
+        hasHost: room.ownerId !== null,
       });
       broadcastUsers(roomId);
       if (accountId) recordVisit(roomId, accountId);
@@ -246,7 +279,7 @@ export function createWhiteboardServer({
     socket.on("stroke:start", (raw) => {
       const roomId = socket.data.roomId;
       const payload = parseStrokeStart(raw);
-      if (!roomId || !payload) return;
+      if (!roomId || !payload || !permissionsOf(socket)?.canDraw) return;
       if (!rooms.startStroke(roomId, userId, payload)) return;
       socket.to(roomId).emit("stroke:start", { ...payload, userId });
     });
@@ -254,7 +287,8 @@ export function createWhiteboardServer({
     socket.on("stroke:points", (raw) => {
       const roomId = socket.data.roomId;
       const payload = parseStrokePoints(raw);
-      if (!roomId || !payload) return;
+      // Checked on every batch, so becoming a viewer mid-stroke stops the stroke.
+      if (!roomId || !payload || !permissionsOf(socket)?.canDraw) return;
       const accepted = rooms.addPoints(roomId, userId, payload.strokeId, payload.points);
       if (!accepted) return;
       socket.to(roomId).emit("stroke:points", { strokeId: payload.strokeId, points: accepted });
@@ -271,22 +305,22 @@ export function createWhiteboardServer({
     // Undo/redo only touch your own strokes; everyone (including you) is told what changed.
     socket.on("stroke:undo", () => {
       const roomId = socket.data.roomId;
-      if (!roomId) return;
+      if (!roomId || !permissionsOf(socket)?.canDraw) return;
       const strokeId = rooms.undo(roomId, userId);
       if (strokeId) io.to(roomId).emit("stroke:removed", { strokeId });
     });
 
     socket.on("stroke:redo", () => {
       const roomId = socket.data.roomId;
-      if (!roomId) return;
+      if (!roomId || !permissionsOf(socket)?.canDraw) return;
       const restored = rooms.redo(roomId, userId);
       if (restored) io.to(roomId).emit("stroke:restored", restored);
     });
 
-    // Anyone on the board can clear it (v1). The client asks for confirmation first.
+    // The host clears the board (or any editor on boards without a host). The client asks first.
     socket.on("board:clear", (payload) => {
       const roomId = socket.data.roomId;
-      if (!roomId || payload?.roomId !== roomId) return;
+      if (!roomId || payload?.roomId !== roomId || !permissionsOf(socket)?.canClear) return;
       if (!rooms.clear(roomId, userId)) return;
       io.to(roomId).emit("board:cleared", {});
       log(`${userId} cleared ${roomId}`);
@@ -307,6 +341,31 @@ export function createWhiteboardServer({
       const image = payload?.image;
       if (!roomId || !socket.data.user.accountId || !isValidThumbnail(image)) return;
       rooms.setThumbnail(roomId, image);
+    });
+
+    // The host makes people editors (can draw) or viewers (watch only).
+    socket.on("member:set-role", (payload) => {
+      const roomId = socket.data.roomId;
+      const role = payload?.role;
+      const target = io.sockets.sockets.get(String(payload?.participantId ?? ""));
+      if (!roomId || !isAssignableRole(role) || !permissionsOf(socket)?.canManagePeople) return;
+      if (!target || target.data.roomId !== roomId) return;
+      const { memberKey, accountId } = target.data.user;
+      if (rooms.roleOf(roomId, memberKey, accountId) === "host") return; // the host stays the host
+
+      rooms.setMemberRole(roomId, memberKey, role);
+      if (accountId) {
+        boardStore?.setMemberRole(roomId, accountId, role).catch((error: unknown) => {
+          log(`could not save role on ${roomId}: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+      // Tell every tab this person has open on the board, then update everyone's people list.
+      for (const id of io.sockets.adapter.rooms.get(roomId) ?? []) {
+        const other = io.sockets.sockets.get(id);
+        if (other?.data.user.memberKey === memberKey) other.emit("member:role", { role });
+      }
+      broadcastUsers(roomId);
+      log(`${userId} made ${memberKey} ${role} on ${roomId}`);
     });
 
     // Guests can change the name others see; account names come from Google/GitHub.

@@ -1,6 +1,6 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link } from "react-router";
-import { MAX_BOARD_NAME_LENGTH, type Participant } from "@whiteboard/shared";
+import { MAX_BOARD_NAME_LENGTH, type AssignableRole, type Participant } from "@whiteboard/shared";
 import { AccountMenu } from "./AccountMenu";
 import { ParticipantList } from "./ParticipantList";
 import type { ConnectionStatus } from "./useRoomConnection";
@@ -21,6 +21,11 @@ type Props = {
   /** Set for guests, who can change the name others see. */
   guestName?: string;
   onGuestRename?: (name: string) => void;
+  /** The host can change other people's roles. */
+  canManagePeople: boolean;
+  onSetRole: (participantId: string, role: AssignableRole) => void;
+  /** Show a "View only" label (you can't draw). */
+  viewOnly: boolean;
 };
 
 export function BoardTopBar({
@@ -31,6 +36,9 @@ export function BoardTopBar({
   selfId,
   guestName,
   onGuestRename,
+  canManagePeople,
+  onSetRole,
+  viewOnly,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -110,8 +118,18 @@ export function BoardTopBar({
       </div>
 
       <div className="topbar-right">
+        {viewOnly && status === "connected" && (
+          <span className="view-only-pill" title="The host can let you draw">
+            View only
+          </span>
+        )}
         {status === "connected" ? (
-          <ParticipantList users={users} selfId={selfId} />
+          <ParticipantList
+            users={users}
+            selfId={selfId}
+            canManagePeople={canManagePeople}
+            onSetRole={onSetRole}
+          />
         ) : (
           <span className="connection" aria-live="polite">
             <span className={`status-dot status-${status}`} aria-hidden="true" />

@@ -1,6 +1,9 @@
 import {
   DEFAULT_BOARD_NAME,
+  DEFAULT_ROLE,
+  type AssignableRole,
   type Point,
+  type Role,
   type Stroke,
   type StrokeStartPayload,
 } from "@whiteboard/shared";
@@ -36,6 +39,11 @@ export type Room = {
   name: string;
   /** Small JPEG data URL for dashboard cards, or null if none yet. */
   thumbnail: string | null;
+  /**
+   * Roles the host has given, by member key ("a:<account id>" or "g:<guest id>"). Anyone not
+   * listed has the default role; the owner is always the host.
+   */
+  memberRoles: Map<string, AssignableRole>;
   /**
    * True for a board that has never been saved and nobody signed in has opened yet. When an
    * account is required to create boards, guests can't join these (the board doesn't exist).
@@ -73,7 +81,14 @@ export class RoomStore {
       isNew = false,
       name = DEFAULT_BOARD_NAME,
       thumbnail = null,
-    }: { ownerId?: string | null; isNew?: boolean; name?: string; thumbnail?: string | null } = {},
+      memberRoles = new Map(),
+    }: {
+      ownerId?: string | null;
+      isNew?: boolean;
+      name?: string;
+      thumbnail?: string | null;
+      memberRoles?: Map<string, AssignableRole>;
+    } = {},
   ): Room {
     const existing = this.rooms.get(roomId);
     if (existing) return existing;
@@ -94,6 +109,7 @@ export class RoomStore {
       isNew,
       name,
       thumbnail,
+      memberRoles: new Map(memberRoles),
       emptySince: this.now(),
     };
     for (const stroke of strokes) room.seqById.set(stroke.id, room.nextSeq++);
@@ -261,6 +277,26 @@ export class RoomStore {
     if (!room || room.thumbnail === thumbnail) return false;
     room.thumbnail = thumbnail;
     room.revision++;
+    return true;
+  }
+
+  /**
+   * Someone's role on a board. `accountId` is null for guests; `memberKey` identifies them
+   * ("a:<account id>" or "g:<guest id>").
+   */
+  roleOf(roomId: string, memberKey: string, accountId: string | null): Role {
+    const room = this.rooms.get(roomId);
+    if (!room) return DEFAULT_ROLE;
+    if (accountId !== null && room.ownerId === accountId) return "host";
+    return room.memberRoles.get(memberKey) ?? DEFAULT_ROLE;
+  }
+
+  /** Give someone a role (not the host, whose role comes from owning the board). */
+  setMemberRole(roomId: string, memberKey: string, role: AssignableRole): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room) return false;
+    if (role === DEFAULT_ROLE) room.memberRoles.delete(memberKey);
+    else room.memberRoles.set(memberKey, role);
     return true;
   }
 

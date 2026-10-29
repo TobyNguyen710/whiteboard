@@ -1,3 +1,5 @@
+import type { Role } from "./roles.js";
+
 /** Someone on a board, as shown to everyone else there. */
 export type Participant = {
   /** Connection ID: unique per open tab, not an account ID. */
@@ -6,6 +8,7 @@ export type Participant = {
   /** Profile picture from Google/GitHub, or null for guests. */
   avatarUrl: string | null;
   isGuest: boolean;
+  role: Role;
 };
 
 /** Sent with the socket connection (Socket.IO `auth` option). */
@@ -14,7 +17,16 @@ export type HandshakeAuth = {
   token?: string;
   /** Display name when not signed in. */
   guestName?: string;
+  /** Random ID this browser keeps as a guest, so a refresh keeps your role on a board. */
+  guestId?: string;
 };
+
+const GUEST_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Guest IDs are random UUIDs. Accepts unknown because they arrive from the network. */
+export function isValidGuestId(value: unknown): value is string {
+  return typeof value === "string" && GUEST_ID_PATTERN.test(value);
+}
 
 export const MAX_DISPLAY_NAME_LENGTH = 32;
 export const DEFAULT_GUEST_NAME = "Guest";

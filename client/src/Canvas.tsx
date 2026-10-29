@@ -30,6 +30,8 @@ type Props = {
   tool: Tool;
   color: string;
   size: number;
+  /** Viewers watch but can't draw. */
+  readOnly?: boolean;
 };
 
 /** What the board page can ask the canvas for. */
@@ -41,7 +43,10 @@ export type CanvasHandle = {
   getThumbnail: () => string | null | undefined;
 };
 
-export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({ socket, tool, color, size }, ref) {
+export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
+  { socket, tool, color, size, readOnly = false },
+  ref,
+) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cursorRef = useRef<HTMLDivElement>(null);
   /** Last hovering mouse/pen position (client px), so the preview can follow brush changes too. */
@@ -233,7 +238,8 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({ socket, 
     if (!cursor || !canvas) return;
 
     const hover = hoverRef.current;
-    const onBoard = hover !== null && isOnBoard(toBoardPoint({ clientX: hover.x, clientY: hover.y }));
+    const onBoard =
+      !readOnly && hover !== null && isOnBoard(toBoardPoint({ clientX: hover.x, clientY: hover.y }));
     cursor.hidden = !onBoard;
     canvas.style.cursor = onBoard ? "none" : "";
     if (!hover || !onBoard) return;
@@ -249,7 +255,12 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({ socket, 
   };
 
   // Re-style the preview when the brush changes while the mouse is still.
-  useEffect(updateBrushCursor, [tool, color, size]);
+  useEffect(updateBrushCursor, [tool, color, size, readOnly]);
+
+  // Becoming a viewer mid-stroke ends the stroke here too (the server already stops it).
+  useEffect(() => {
+    if (readOnly) activeRef.current.clear();
+  }, [readOnly]);
 
   const trackHover = (e: React.PointerEvent<HTMLCanvasElement>) => {
     hoverRef.current = e.pointerType === "touch" ? null : { x: e.clientX, y: e.clientY };
@@ -263,6 +274,7 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas({ socket, 
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     trackHover(e);
+    if (readOnly) return;
     if (e.pointerType === "mouse" && e.button !== 0) return;
     const point = toBoardPoint(e);
     if (!isOnBoard(point)) return;

@@ -679,3 +679,49 @@ body {
   color: var(--ink);
   font-weight: 600;
 }
+
+/* ---------- Roles ---------- */
+
+.view-only-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #8a4b00;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.participant-sub {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.participant-tag.role-host {
+  background: #1e1e1e;
+  color: #ffffff;
+}
+
+.participant-tag.role-viewer {
+  background: #fff4e5;
+  color: #8a4b00;
+}
+
+.role-select {
+  margin-left: auto;
+  flex: none;
+  padding: 3px 6px;
+  border: 1px solid #c8c8d0;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.popover-hint {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}

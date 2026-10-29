@@ -18,6 +18,7 @@ I wanted to understand how tools like Figma and Excalidraw keep everyone's view 
 - **Tools:** 8 colors plus a custom picker, brush sizes 1–100 with a live preview, eraser, clear board.
 - **Undo / redo** for your own strokes (Ctrl+Z / Ctrl+Y), synced for everyone.
 - **Accounts:** sign in with Google or GitHub to create boards and find them again on any device (My boards, Shared with me). Guests can join boards from a link.
+- **Roles:** the board's owner is the host and decides who can draw (editors) and who can only watch (viewers). Only the host can clear the board.
 - **Works everywhere:** mouse, touch, and pen; the board scales to any screen and looks the same on all of them.
 
 ## How it works
@@ -102,4 +103,3 @@ Unit tests cover the pure logic (board math, point batching, input validation, t
 ## Known limits (v1)
 
 - Undo history is per connection: refreshing the page resets it (your strokes stay).
-- Anyone on a board can clear it.
