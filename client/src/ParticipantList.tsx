@@ -12,10 +12,11 @@ type Props = {
   /** The host can change other people's roles. */
   canManagePeople: boolean;
   onSetRole: (participantId: string, role: AssignableRole) => void;
+  onRemove: (participantId: string) => void;
 };
 
 /** Overlapping avatars of everyone on the board; click for the full list (and role controls). */
-export function ParticipantList({ users, selfId, canManagePeople, onSetRole }: Props) {
+export function ParticipantList({ users, selfId, canManagePeople, onSetRole, onRemove }: Props) {
   const { open, toggle, ref } = usePopover<HTMLDivElement>();
   if (users.length === 0) return null;
 
@@ -60,7 +61,19 @@ export function ParticipantList({ users, selfId, canManagePeople, onSetRole }: P
                       <option value="editor">{ROLE_LABELS.editor}</option>
                       <option value="viewer">{ROLE_LABELS.viewer}</option>
                     </select>
-                  ) : (
+                  ) : null}
+                  {editable && (
+                    <button
+                      type="button"
+                      className="remove-button"
+                      title={`Remove ${user.name} from this board`}
+                      aria-label={`Remove ${user.name} from this board`}
+                      onClick={() => onRemove(user.id)}
+                    >
+                      Remove
+                    </button>
+                  )}
+                  {editable ? null : (
                     <span className={`participant-tag role-${user.role}`}>{ROLE_LABELS[user.role]}</span>
                   )}
                 </li>
@@ -68,7 +81,7 @@ export function ParticipantList({ users, selfId, canManagePeople, onSetRole }: P
             })}
           </ul>
           {canManagePeople && users.length > 1 && (
-            <p className="popover-hint">People who can draw can also undo their own strokes. Only you can clear.</p>
+            <p className="popover-hint">Removed people can't rejoin until you allow it in board settings.</p>
           )}
         </div>
       )}

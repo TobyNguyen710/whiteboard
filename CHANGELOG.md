@@ -24,6 +24,9 @@ All notable changes to this project are documented here. Format based on [Keep a
 - Database: `board_members` table and board thumbnails, with row-level security so signed-in users can only read their own boards and memberships.
 - Roles on boards: the owner is the host; everyone else is an editor (can draw) or a viewer (watch only). The host changes roles from the people list, and the server enforces them: viewers can't draw, erase, or undo, and only the host can clear the board (boards from before accounts keep the old rule). Shown as role labels, with a "View only" label and no toolbar for viewers.
 - Roles are remembered: in the database for signed-in members, and by a random guest ID kept in the browser for guests.
+- Host controls (board settings, saved with the board): the role new people get (can draw or view only), lock the board so only the host draws, and who can clear (only the host, or anyone who can draw).
+- The host can remove people from a board; they can't rejoin until the host allows them back. Removed people see a "You were removed" page; a locked board shows a "Board locked" label.
+- Member roles are stored only when the host chooses one, so the board's default role applies to everyone else.
 
 ### Security
 - Upgraded dev tooling to clear all `npm audit` findings (7 → 0): Vite 5 → 8, Vitest 3 → 5, @vitejs/plugin-react 4 → 6. The issues were in the dev server and test runner only; production dependencies already had none. Removed the Vite version pin added for Vitest 3.

@@ -1,5 +1,5 @@
 import type { Participant } from "./participant.js";
-import type { AssignableRole, Role } from "./roles.js";
+import type { AssignableRole, BoardSettings, Role } from "./roles.js";
 import type { Point, Stroke, Tool } from "./types.js";
 
 export type StrokeStartPayload = {
@@ -31,19 +31,35 @@ export interface ClientToServerEvents {
   "board:thumbnail": (payload: { image: string }) => void;
   /** Host only: change someone's role. `participantId` is their connection ID from room:users. */
   "member:set-role": (payload: { participantId: string; role: AssignableRole }) => void;
+  /** Host only: take someone off the board; they can't rejoin until allowed back. */
+  "member:remove": (payload: { participantId: string }) => void;
+  /** Host only: let everyone who was removed join again. */
+  "board:allow-removed": () => void;
+  /** Host only: change board settings (any subset of fields). */
+  "board:update-settings": (payload: Partial<BoardSettings>) => void;
 }
 
 /** Why the server refused to put you on a board. */
 export type RoomErrorReason =
   /** The board doesn't exist, and only signed-in users can create boards. */
-  "not-found";
+  | "not-found"
+  /** The host removed you from this board. */
+  | "removed";
 
 export interface ServerToClientEvents {
   /**
    * Sent when you join: the board's drawing, its name, your role, and whether the board has a
    * host (boards from before accounts don't).
    */
-  "room:state": (payload: { strokes: Stroke[]; name: string; role: Role; hasHost: boolean }) => void;
+  "room:state": (payload: {
+    strokes: Stroke[];
+    name: string;
+    role: Role;
+    hasHost: boolean;
+    settings: BoardSettings;
+  }) => void;
+  /** Board settings changed. `removedCount` is how many people are currently kept off it. */
+  "board:settings": (payload: { settings: BoardSettings; removedCount: number }) => void;
   /** Your role changed (the host changed it). */
   "member:role": (payload: { role: Role }) => void;
   "board:renamed": (payload: { name: string }) => void;

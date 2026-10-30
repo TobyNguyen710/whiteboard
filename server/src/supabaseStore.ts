@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   cleanBoardName,
   DEFAULT_BOARD_NAME,
+  DEFAULT_BOARD_SETTINGS,
   isAssignableRole,
   isValidThumbnail,
   type AssignableRole,
@@ -26,18 +27,18 @@ export class SupabaseBoardStore implements BoardStore {
   async load(boardId: string): Promise<SavedBoard | null> {
     const { data, error } = await this.db
       .from("boards")
-      .select("strokes, owner_id, name, thumbnail")
+      .select("strokes, owner_id, name, thumbnail, default_role, locked, clear_policy")
       .eq("id", boardId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
 
-    // Only members whose role isn't the default need loading.
+    // Roles the host chose (null = not chosen, so the board's default role applies).
     const roles = await this.db
       .from("board_members")
       .select("user_id, role")
       .eq("board_id", boardId)
-      .neq("role", "editor");
+      .not("role", "is", null);
     if (roles.error) throw new Error(roles.error.message);
     const memberRoles: Record<string, AssignableRole> = {};
     for (const row of roles.data ?? []) {
@@ -50,6 +51,11 @@ export class SupabaseBoardStore implements BoardStore {
       name: cleanBoardName(data.name) ?? DEFAULT_BOARD_NAME,
       thumbnail: isValidThumbnail(data.thumbnail) ? data.thumbnail : null,
       memberRoles,
+      settings: {
+        defaultRole: isAssignableRole(data.default_role) ? data.default_role : DEFAULT_BOARD_SETTINGS.defaultRole,
+        locked: data.locked === true,
+        clearPolicy: data.clear_policy === "editors" ? "editors" : "host",
+      },
     };
   }
 
@@ -60,6 +66,9 @@ export class SupabaseBoardStore implements BoardStore {
       owner_id: board.ownerId ?? null,
       name: board.name ?? DEFAULT_BOARD_NAME,
       thumbnail: board.thumbnail ?? null,
+      default_role: (board.settings ?? DEFAULT_BOARD_SETTINGS).defaultRole,
+      locked: (board.settings ?? DEFAULT_BOARD_SETTINGS).locked,
+      clear_policy: (board.settings ?? DEFAULT_BOARD_SETTINGS).clearPolicy,
       updated_at: new Date().toISOString(),
     });
     if (error) throw new Error(error.message);

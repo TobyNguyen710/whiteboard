@@ -1,4 +1,9 @@
-import { DEFAULT_BOARD_NAME, type AssignableRole, type Stroke } from "@whiteboard/shared";
+import {
+  DEFAULT_BOARD_NAME,
+  type AssignableRole,
+  type BoardSettings,
+  type Stroke,
+} from "@whiteboard/shared";
 import type { RoomStore } from "./rooms.js";
 
 export type SavedBoard = {
@@ -8,6 +13,7 @@ export type SavedBoard = {
   thumbnail?: string | null;
   /** Roles the host gave signed-in members, by account ID (only non-default roles). */
   memberRoles?: Record<string, AssignableRole>;
+  settings?: BoardSettings;
 };
 
 /** Just enough to check permissions without loading the drawing. */
@@ -86,8 +92,7 @@ export class MemoryBoardStore implements BoardStore {
 
   async setMemberRole(boardId: string, userId: string, role: AssignableRole): Promise<void> {
     if (!this.boards.has(boardId)) throw new Error("board must be saved before setting roles");
-    if (role === "editor") this.roles.delete(`${boardId} ${userId}`);
-    else this.roles.set(`${boardId} ${userId}`, role);
+    this.roles.set(`${boardId} ${userId}`, role);
   }
 
   async ping(): Promise<void> {}
@@ -135,6 +140,7 @@ export class BoardSaver {
         isNew: saved === null,
         name: saved?.name,
         thumbnail: saved?.thumbnail ?? null,
+        settings: saved?.settings,
         memberRoles: new Map(
           Object.entries(saved?.memberRoles ?? {}).map(([accountId, role]) => [`a:${accountId}`, role]),
         ),
@@ -168,6 +174,7 @@ export class BoardSaver {
         ownerId: room.ownerId,
         name: room.name,
         thumbnail: room.thumbnail,
+        settings: room.settings,
       };
       try {
         await store.save(room.id, snapshot);

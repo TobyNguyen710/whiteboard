@@ -1,7 +1,13 @@
 import { useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { Link } from "react-router";
-import { MAX_BOARD_NAME_LENGTH, type AssignableRole, type Participant } from "@whiteboard/shared";
+import {
+  MAX_BOARD_NAME_LENGTH,
+  type AssignableRole,
+  type BoardSettings,
+  type Participant,
+} from "@whiteboard/shared";
 import { AccountMenu } from "./AccountMenu";
+import { BoardSettingsMenu } from "./BoardSettingsMenu";
 import { ParticipantList } from "./ParticipantList";
 import type { ConnectionStatus } from "./useRoomConnection";
 
@@ -24,8 +30,16 @@ type Props = {
   /** The host can change other people's roles. */
   canManagePeople: boolean;
   onSetRole: (participantId: string, role: AssignableRole) => void;
-  /** Show a "View only" label (you can't draw). */
-  viewOnly: boolean;
+  onRemove: (participantId: string) => void;
+  /** Why you can't draw, if you can't: shown as a label. */
+  drawBlocked: "viewer" | "locked" | null;
+  /** Host only: board settings controls. */
+  settings?: {
+    value: BoardSettings;
+    removedCount: number;
+    onChange: (change: Partial<BoardSettings>) => void;
+    onAllowRemoved: () => void;
+  };
 };
 
 export function BoardTopBar({
@@ -38,7 +52,9 @@ export function BoardTopBar({
   onGuestRename,
   canManagePeople,
   onSetRole,
-  viewOnly,
+  onRemove,
+  drawBlocked,
+  settings,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -118,9 +134,12 @@ export function BoardTopBar({
       </div>
 
       <div className="topbar-right">
-        {viewOnly && status === "connected" && (
-          <span className="view-only-pill" title="The host can let you draw">
-            View only
+        {drawBlocked && status === "connected" && (
+          <span
+            className="view-only-pill"
+            title={drawBlocked === "locked" ? "Only the host can draw while the board is locked" : "The host can let you draw"}
+          >
+            {drawBlocked === "locked" ? "Board locked" : "View only"}
           </span>
         )}
         {status === "connected" ? (
@@ -129,6 +148,7 @@ export function BoardTopBar({
             selfId={selfId}
             canManagePeople={canManagePeople}
             onSetRole={onSetRole}
+            onRemove={onRemove}
           />
         ) : (
           <span className="connection" aria-live="polite">
@@ -139,6 +159,14 @@ export function BoardTopBar({
         <button type="button" className="share-button" onClick={() => void share()}>
           {copied ? "Link copied!" : "Share"}
         </button>
+        {settings && status === "connected" && (
+          <BoardSettingsMenu
+            settings={settings.value}
+            removedCount={settings.removedCount}
+            onChange={settings.onChange}
+            onAllowRemoved={settings.onAllowRemoved}
+          />
+        )}
         <AccountMenu guestName={guestName} onGuestRename={onGuestRename} />
       </div>
     </header>

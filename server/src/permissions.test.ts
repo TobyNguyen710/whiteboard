@@ -230,3 +230,126 @@ describe("clearing", () => {
     expect(got(b, "member:role")).toBe(false);
   });
 });
+
+describe("board settings", () => {
+  it("only the host can change settings, and everyone hears about it", async () => {
+    const { host, bob } = await hostAndBob("settings01");
+    bob.emit("board:update-settings", { locked: true });
+    await settle();
+    expect(got(host, "board:settings")).toBe(false);
+
+    host.emit("board:update-settings", { locked: true, defaultRole: "host" as "editor" });
+    expect(await next(bob, "board:settings")).toEqual({
+      settings: { defaultRole: "editor", locked: true, clearPolicy: "host" },
+      removedCount: 0,
+    });
+  });
+
+  it("locking stops everyone but the host drawing, and unlocking brings it back", async () => {
+    const { host, bob } = await hostAndBob("locked0001");
+    host.emit("board:update-settings", { locked: true });
+    await next(bob, "board:settings");
+    bob.emit("stroke:start", stroke("blocked"));
+    await settle();
+    expect(got(host, "stroke:start")).toBe(false);
+
+    host.emit("stroke:start", stroke("host-ok"));
+    await next(bob, "stroke:start");
+
+    host.emit("board:update-settings", { locked: false });
+    await next(bob, "board:settings", (p) => !p.settings.locked);
+    bob.emit("stroke:start", stroke("allowed"));
+    await next(host, "stroke:start", (p) => p.strokeId === "allowed");
+  });
+
+  it("new people join with the default role, but people the host chose keep theirs", async () => {
+    const { host, bob } = await hostAndBob("default001");
+    host.emit("member:set-role", { participantId: bob.id!, role: "editor" }); // chosen explicitly
+    await next(bob, "member:role");
+
+    const { client: early } = await join("default001", { guestName: "Early", guestId: GUEST_ID });
+    host.emit("board:update-settings", { defaultRole: "viewer" });
+    // Someone who never got a role follows the new default right away...
+    expect(await next(early, "member:role", (p) => p.role === "viewer")).toEqual({ role: "viewer" });
+
+    // ...and so does anyone new.
+    const { state } = await join("default001", { guestName: "Late", guestId: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" });
+    expect(state.role).toBe("viewer");
+
+    // Bob was chosen as an editor, so he stays one.
+    const { users } = await next(host, "room:users", (p) => p.count === 4);
+    expect(users.find((u) => u.id === bob.id)?.role).toBe("editor");
+  });
+
+  it("can let anyone who can draw clear", async () => {
+    const { host, bob } = await hostAndBob("clearpol01");
+    host.emit("board:update-settings", { clearPolicy: "editors" });
+    await next(bob, "board:settings");
+    bob.emit("board:clear", { roomId: "clearpol01" });
+    await next(host, "board:cleared");
+  });
+
+  it("saves settings with the board", async () => {
+    const { host } = await hostAndBob("savedset01");
+    host.emit("board:update-settings", { locked: true, clearPolicy: "editors", defaultRole: "viewer" });
+    await next(host, "board:settings");
+    await server.saver.flush();
+    expect((await store.load("savedset01"))?.settings).toEqual({
+      defaultRole: "viewer",
+      locked: true,
+      clearPolicy: "editors",
+    });
+  });
+});
+
+describe("removing people", () => {
+  it("takes someone off the board and keeps them off", async () => {
+    const { host, bob } = await hostAndBob("remove0001");
+    host.emit("member:remove", { participantId: bob.id! });
+    expect(await next(bob, "room:error")).toEqual({ reason: "removed" });
+    const { users } = await next(host, "room:users", (p) => p.count === 1);
+    expect(users.map((u) => u.id)).toEqual([host.id]);
+    expect((await next(host, "board:settings")).removedCount).toBe(1);
+
+    // They can't draw any more...
+    bob.emit("stroke:start", stroke("ghost"));
+    await settle();
+    expect(got(host, "stroke:start")).toBe(false);
+
+    // ...or rejoin, even from a new tab.
+    const again = await connect({ token: "bob-token" });
+    again.emit("room:join", { roomId: "remove0001" });
+    expect(await next(again, "room:error")).toEqual({ reason: "removed" });
+  });
+
+  it("keeps a removed guest off by their guest ID, but not other guests", async () => {
+    const { client: host } = await join("remove0002", { token: "host-token" });
+    const { client: guest } = await join("remove0002", { guestName: "Pest", guestId: GUEST_ID });
+    host.emit("member:remove", { participantId: guest.id! });
+    await next(guest, "room:error");
+
+    const back = await connect({ guestName: "Pest", guestId: GUEST_ID });
+    back.emit("room:join", { roomId: "remove0002" });
+    expect(await next(back, "room:error")).toEqual({ reason: "removed" });
+
+    await join("remove0002", { guestName: "Friend", guestId: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d" });
+  });
+
+  it("lets removed people back when the host allows it", async () => {
+    const { host, bob } = await hostAndBob("remove0003");
+    host.emit("member:remove", { participantId: bob.id! });
+    await next(bob, "room:error");
+    host.emit("board:allow-removed");
+    expect((await next(host, "board:settings", (p) => p.removedCount === 0)).removedCount).toBe(0);
+    await join("remove0003", { token: "bob-token" });
+  });
+
+  it("only the host can remove people, and the host can't be removed", async () => {
+    const { host, bob } = await hostAndBob("remove0004");
+    bob.emit("member:remove", { participantId: host.id! });
+    host.emit("member:remove", { participantId: host.id! });
+    await settle();
+    expect(got(host, "room:error")).toBe(false);
+    expect(got(bob, "room:error")).toBe(false);
+  });
+});

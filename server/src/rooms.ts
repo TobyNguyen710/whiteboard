@@ -1,7 +1,8 @@
 import {
   DEFAULT_BOARD_NAME,
-  DEFAULT_ROLE,
+  DEFAULT_BOARD_SETTINGS,
   type AssignableRole,
+  type BoardSettings,
   type Point,
   type Role,
   type Stroke,
@@ -44,6 +45,12 @@ export type Room = {
    * listed has the default role; the owner is always the host.
    */
   memberRoles: Map<string, AssignableRole>;
+  settings: BoardSettings;
+  /**
+   * Member keys the host removed. They can't rejoin until allowed back. Kept in memory only:
+   * forgotten when the board is unloaded.
+   */
+  removed: Set<string>;
   /**
    * True for a board that has never been saved and nobody signed in has opened yet. When an
    * account is required to create boards, guests can't join these (the board doesn't exist).
@@ -82,12 +89,14 @@ export class RoomStore {
       name = DEFAULT_BOARD_NAME,
       thumbnail = null,
       memberRoles = new Map(),
+      settings = DEFAULT_BOARD_SETTINGS,
     }: {
       ownerId?: string | null;
       isNew?: boolean;
       name?: string;
       thumbnail?: string | null;
       memberRoles?: Map<string, AssignableRole>;
+      settings?: BoardSettings;
     } = {},
   ): Room {
     const existing = this.rooms.get(roomId);
@@ -110,6 +119,8 @@ export class RoomStore {
       name,
       thumbnail,
       memberRoles: new Map(memberRoles),
+      settings: { ...settings },
+      removed: new Set(),
       emptySince: this.now(),
     };
     for (const stroke of strokes) room.seqById.set(stroke.id, room.nextSeq++);
@@ -286,18 +297,43 @@ export class RoomStore {
    */
   roleOf(roomId: string, memberKey: string, accountId: string | null): Role {
     const room = this.rooms.get(roomId);
-    if (!room) return DEFAULT_ROLE;
+    if (!room) return DEFAULT_BOARD_SETTINGS.defaultRole;
     if (accountId !== null && room.ownerId === accountId) return "host";
-    return room.memberRoles.get(memberKey) ?? DEFAULT_ROLE;
+    return room.memberRoles.get(memberKey) ?? room.settings.defaultRole;
   }
 
   /** Give someone a role (not the host, whose role comes from owning the board). */
   setMemberRole(roomId: string, memberKey: string, role: AssignableRole): boolean {
     const room = this.rooms.get(roomId);
     if (!room) return false;
-    if (role === DEFAULT_ROLE) room.memberRoles.delete(memberKey);
-    else room.memberRoles.set(memberKey, role);
+    // Stored explicitly, so changing the default role later doesn't change people the host chose.
+    room.memberRoles.set(memberKey, role);
     return true;
+  }
+
+  /** Apply a (validated) settings change. Returns false if nothing changed. */
+  updateSettings(roomId: string, change: Partial<BoardSettings>): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room) return false;
+    const next = { ...room.settings, ...change };
+    if (JSON.stringify(next) === JSON.stringify(room.settings)) return false;
+    room.settings = next;
+    room.revision++;
+    return true;
+  }
+
+  /** Keep someone off the board (until allowRemoved). */
+  removeMember(roomId: string, memberKey: string): void {
+    this.rooms.get(roomId)?.removed.add(memberKey);
+  }
+
+  isRemoved(roomId: string, memberKey: string): boolean {
+    return this.rooms.get(roomId)?.removed.has(memberKey) ?? false;
+  }
+
+  /** Let everyone the host removed join again. */
+  allowRemoved(roomId: string): void {
+    this.rooms.get(roomId)?.removed.clear();
   }
 
   /** Drop a board from memory immediately (it was deleted). */

@@ -6,6 +6,7 @@ import {
   isValidRoomId,
   permissionsFor,
   type AssignableRole,
+  type BoardSettings,
 } from "@whiteboard/shared";
 import { useAuth } from "../auth";
 import { BoardTopBar } from "../BoardTopBar";
@@ -40,8 +41,19 @@ export function BoardPage() {
 function Board({ roomId }: { roomId: string }) {
   const { enabled: accounts, account, signOut } = useAuth();
   const [guestName, setGuestNameState] = useState(getGuestName);
-  const { status, socket, users, selfId, problem, boardName, role, hasHost } = useRoomConnection(roomId);
-  const permissions = permissionsFor(role, hasHost);
+  const {
+    status,
+    socket,
+    users,
+    selfId,
+    problem,
+    boardName,
+    role,
+    hasHost,
+    settings: boardSettings,
+    removedCount,
+  } = useRoomConnection(roomId);
+  const permissions = permissionsFor(role, hasHost, boardSettings);
   const [settings, setSettings] = useState<ToolSettings>(loadSettings);
   // Without accounts (login not configured), names and previews are kept in this browser.
   const [localName, setLocalName] = useState(() => (accounts ? DEFAULT_BOARD_NAME : recordVisit(roomId).name));
@@ -131,6 +143,9 @@ function Board({ roomId }: { roomId: string }) {
   // Host only (the server checks): make someone an editor or a viewer.
   const setRole = (participantId: string, next: AssignableRole) =>
     socket?.emit("member:set-role", { participantId, role: next });
+  const removePerson = (participantId: string) => socket?.emit("member:remove", { participantId });
+  const updateSettings = (change: Partial<BoardSettings>) => socket?.emit("board:update-settings", change);
+  const allowRemoved = () => socket?.emit("board:allow-removed");
 
   useUndoShortcuts(undo, redo);
 
@@ -144,6 +159,7 @@ function Board({ roomId }: { roomId: string }) {
   if (problem === "not-found" || problem === "deleted") {
     return <BoardNotFound deleted={problem === "deleted"} />;
   }
+  if (problem === "removed") return <RemovedFromBoard />;
 
   return (
     <div className="board-page">
@@ -157,7 +173,13 @@ function Board({ roomId }: { roomId: string }) {
         onGuestRename={account ? undefined : renameGuest}
         canManagePeople={permissions.canManagePeople}
         onSetRole={setRole}
-        viewOnly={!canDraw}
+        onRemove={removePerson}
+        drawBlocked={canDraw ? null : role === "viewer" ? "viewer" : "locked"}
+        settings={
+          permissions.canManageBoard && hasHost
+            ? { value: boardSettings, removedCount, onChange: updateSettings, onAllowRemoved: allowRemoved }
+            : undefined
+        }
       />
       <div className="board-area">
         <Canvas
@@ -195,6 +217,19 @@ function BoardNotFound({ deleted }: { deleted: boolean }) {
         {enabled && !account && " Sign in to create your own boards."}
       </p>
       {enabled && !account && <SignInButtons />}
+      <Link to="/" className="message-link">
+        Back to home
+      </Link>
+    </div>
+  );
+}
+
+function RemovedFromBoard() {
+  return (
+    <div className="message-page">
+      <Logo />
+      <h1>You were removed from this board</h1>
+      <p>The board's host removed you. You can rejoin if they allow it.</p>
       <Link to="/" className="message-link">
         Back to home
       </Link>

@@ -8,6 +8,7 @@ import {
   isValidGuestId,
   isValidRoomId,
   isValidThumbnail,
+  parseSettingsChange,
   permissionsFor,
   type Permissions,
   type ClientToServerEvents,
@@ -129,7 +130,24 @@ export function createWhiteboardServer({
     const room = roomId ? rooms.get(roomId) : undefined;
     if (!roomId || !room || !room.users.has(socket.id)) return null;
     const { memberKey, accountId } = socket.data.user;
-    return permissionsFor(rooms.roleOf(roomId, memberKey, accountId), room.ownerId !== null);
+    return permissionsFor(rooms.roleOf(roomId, memberKey, accountId), room.ownerId !== null, room.settings);
+  };
+
+  /** Tell everyone on a board the current settings. */
+  const broadcastSettings = (roomId: string) => {
+    const room = rooms.get(roomId);
+    if (room) io.to(roomId).emit("board:settings", { settings: room.settings, removedCount: room.removed.size });
+  };
+
+  /** Re-send everyone their role (e.g. after the default role changed) and the people list. */
+  const refreshRoles = (roomId: string) => {
+    for (const id of io.sockets.adapter.rooms.get(roomId) ?? []) {
+      const socket = io.sockets.sockets.get(id);
+      if (!socket) continue;
+      const { memberKey, accountId } = socket.data.user;
+      socket.emit("member:role", { role: rooms.roleOf(roomId, memberKey, accountId) });
+    }
+    broadcastUsers(roomId);
   };
 
   // ---------- Board actions, shared by the board itself and the dashboard API ----------
@@ -261,6 +279,13 @@ export function createWhiteboardServer({
         if (!socket.connected || socket.data.roomId !== roomId) return;
       }
 
+      // People the host removed stay off the board until allowed back.
+      if (rooms.isRemoved(roomId, socket.data.user.memberKey)) {
+        socket.data.roomId = undefined;
+        socket.emit("room:error", { reason: "removed" });
+        return;
+      }
+
       const room = rooms.join(roomId, userId);
       void socket.join(roomId);
 
@@ -270,6 +295,7 @@ export function createWhiteboardServer({
         name: room.name,
         role: rooms.roleOf(roomId, socket.data.user.memberKey, accountId),
         hasHost: room.ownerId !== null,
+        settings: room.settings,
       });
       broadcastUsers(roomId);
       if (accountId) recordVisit(roomId, accountId);
@@ -366,6 +392,46 @@ export function createWhiteboardServer({
       }
       broadcastUsers(roomId);
       log(`${userId} made ${memberKey} ${role} on ${roomId}`);
+    });
+
+    // Host: board settings (default role for new people, lock, who can clear).
+    socket.on("board:update-settings", (payload) => {
+      const roomId = socket.data.roomId;
+      if (!roomId || !permissionsOf(socket)?.canManageBoard) return;
+      if (!rooms.updateSettings(roomId, parseSettingsChange(payload))) return;
+      broadcastSettings(roomId);
+      refreshRoles(roomId); // the default role or the lock can change what people may do
+    });
+
+    // Host: take someone off the board. All their tabs leave, and they can't rejoin until allowed.
+    socket.on("member:remove", (payload) => {
+      const roomId = socket.data.roomId;
+      const target = io.sockets.sockets.get(String(payload?.participantId ?? ""));
+      if (!roomId || !permissionsOf(socket)?.canManagePeople) return;
+      if (!target || target.data.roomId !== roomId) return;
+      const { memberKey, accountId } = target.data.user;
+      if (rooms.roleOf(roomId, memberKey, accountId) === "host") return; // can't remove the host
+
+      rooms.removeMember(roomId, memberKey);
+      for (const id of [...(io.sockets.adapter.rooms.get(roomId) ?? [])]) {
+        const other = io.sockets.sockets.get(id);
+        if (other?.data.user.memberKey !== memberKey) continue;
+        other.emit("room:error", { reason: "removed" });
+        rooms.leave(roomId, other.id);
+        other.data.roomId = undefined;
+        void other.leave(roomId);
+      }
+      broadcastUsers(roomId);
+      broadcastSettings(roomId);
+      log(`${userId} removed ${memberKey} from ${roomId}`);
+    });
+
+    // Host: let everyone who was removed join again.
+    socket.on("board:allow-removed", () => {
+      const roomId = socket.data.roomId;
+      if (!roomId || !permissionsOf(socket)?.canManagePeople) return;
+      rooms.allowRemoved(roomId);
+      broadcastSettings(roomId);
     });
 
     // Guests can change the name others see; account names come from Google/GitHub.

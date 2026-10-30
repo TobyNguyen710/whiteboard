@@ -725,3 +725,58 @@ body {
   font-size: 12px;
   color: var(--muted);
 }
+
+/* ---------- Host controls ---------- */
+
+.settings-menu {
+  position: relative;
+}
+
+.settings-popover {
+  width: min(340px, calc(100vw - 32px));
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+  cursor: default;
+}
+
+.setting-name {
+  display: block;
+  font-weight: 600;
+}
+
+.setting-help {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.setting-switch {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--ink);
+  cursor: pointer;
+}
+
+.remove-button {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.remove-button:hover {
+  border-color: var(--danger);
+}
