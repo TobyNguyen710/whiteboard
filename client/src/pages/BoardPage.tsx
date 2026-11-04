@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Link, Navigate, useParams } from "react-router";
 import {
   cleanBoardName as cleanSharedBoardName,
   DEFAULT_BOARD_NAME,
   isValidRoomId,
+  MAX_BOARD_PASSWORD_LENGTH,
   permissionsFor,
   type AssignableRole,
   type BoardSettings,
@@ -23,12 +24,13 @@ import {
 import { SignInButtons } from "../SignInButtons";
 import { Toolbar } from "../Toolbar";
 import { loadSettings, saveSettings, type ToolSettings } from "../tools";
-import { useRoomConnection } from "../useRoomConnection";
+import { useRoomConnection, type ConnectionProblem } from "../useRoomConnection";
 import { useUndoShortcuts } from "../useUndoShortcuts";
 
 const THUMBNAIL_INTERVAL_MS = 15_000;
 /** How long "Connecting…" can show before we explain that the free server may be asleep. */
 const WAKE_HINT_DELAY_MS = 5_000;
+const SET_PASSWORD_TIMEOUT_MS = 10_000;
 
 export function BoardPage() {
   const { roomId } = useParams();
@@ -54,6 +56,8 @@ function Board({ roomId }: { roomId: string }) {
     hasHost,
     settings: boardSettings,
     removedCount,
+    hasPassword,
+    joinWithPassword,
   } = useRoomConnection(roomId);
   const permissions = permissionsFor(role, hasHost, boardSettings);
   const [settings, setSettings] = useState<ToolSettings>(loadSettings);
@@ -160,6 +164,13 @@ function Board({ roomId }: { roomId: string }) {
   const removePerson = (participantId: string) => socket?.emit("member:remove", { participantId });
   const updateSettings = (change: Partial<BoardSettings>) => socket?.emit("board:update-settings", change);
   const allowRemoved = () => socket?.emit("board:allow-removed");
+  const setPassword = (password: string | null) =>
+    new Promise<boolean>((resolve) => {
+      if (!socket?.connected) return resolve(false);
+      socket
+        .timeout(SET_PASSWORD_TIMEOUT_MS)
+        .emit("board:set-password", { password }, (error, result) => resolve(!error && result.ok));
+    });
 
   useUndoShortcuts(undo, redo);
 
@@ -175,8 +186,15 @@ function Board({ roomId }: { roomId: string }) {
   }
   if (problem === "removed") return <RemovedFromBoard />;
 
+  const isHost = permissions.canManageBoard && hasHost;
+
   return (
     <div className="board-page">
+      {/* Over the board, not instead of it: the canvas must be listening when we get in. */}
+      {problem === "private" && <PrivateBoard />}
+      {(problem === "password-needed" || problem === "password-wrong" || problem === "too-many-tries") && (
+        <PasswordGate problem={problem} onSubmit={joinWithPassword} />
+      )}
       <BoardTopBar
         name={name}
         onRename={canRename ? rename : undefined}
@@ -190,10 +208,22 @@ function Board({ roomId }: { roomId: string }) {
         onRemove={removePerson}
         drawBlocked={canDraw ? null : role === "viewer" ? "viewer" : "locked"}
         settings={
-          permissions.canManageBoard && hasHost
+          isHost
             ? { value: boardSettings, removedCount, onChange: updateSettings, onAllowRemoved: allowRemoved }
             : undefined
         }
+        sharing={
+          isHost
+            ? {
+                boardId: roomId,
+                shared: boardSettings.shared,
+                hasPassword,
+                onSharedChange: (shared) => updateSettings({ shared }),
+                onSetPassword: setPassword,
+              }
+            : undefined
+        }
+        canCopyLink={!hasHost || boardSettings.shared}
       />
       <div className="board-area">
         {slowConnect && (
@@ -239,6 +269,73 @@ function BoardNotFound({ deleted }: { deleted: boolean }) {
       <Link to="/" className="message-link">
         Back to home
       </Link>
+    </div>
+  );
+}
+
+function PrivateBoard() {
+  const { enabled, account } = useAuth();
+  return (
+    <div className="board-gate">
+      <div className="message-page">
+        <Logo />
+        <h1>This board is private</h1>
+        <p>
+          Ask the host to turn on sharing, then open the link again.
+          {enabled && !account && " If you've joined it before, sign in."}
+        </p>
+        {enabled && !account && <SignInButtons />}
+        <Link to="/" className="message-link">
+          Back to home
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+const PASSWORD_ERRORS: Partial<Record<ConnectionProblem, string>> = {
+  "password-wrong": "That password isn't right.",
+  "too-many-tries": "Too many tries. Wait a minute, then try again.",
+};
+
+function PasswordGate({ problem, onSubmit }: { problem: ConnectionProblem; onSubmit: (password: string) => void }) {
+  const [password, setPassword] = useState("");
+  const error = PASSWORD_ERRORS[problem];
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (password) onSubmit(password);
+  };
+
+  return (
+    <div className="board-gate">
+      <form className="message-page" onSubmit={submit}>
+        <Logo />
+        <h1>This board has a password</h1>
+        <p>Ask the host for it. You'll only need it once.</p>
+        <input
+          autoFocus
+          type="password"
+          className="join-input gate-input"
+          aria-label="Board password"
+          aria-invalid={Boolean(error)}
+          autoComplete="off"
+          maxLength={MAX_BOARD_PASSWORD_LENGTH}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        {error && (
+          <span className="join-error" role="alert">
+            {error}
+          </span>
+        )}
+        <button type="submit" className="join-button">
+          Join board
+        </button>
+        <Link to="/" className="message-link">
+          Back to home
+        </Link>
+      </form>
     </div>
   );
 }

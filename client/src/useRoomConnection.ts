@@ -6,6 +6,7 @@ import {
   type BoardSettings,
   type Participant,
   type Role,
+  type RoomErrorReason,
 } from "@whiteboard/shared";
 import { currentHandshakeAuth } from "./auth";
 import { getServerUrl, type BoardSocket } from "./socket";
@@ -20,6 +21,12 @@ export type ConnectionProblem =
   | "deleted"
   /** The host removed us from the board. */
   | "removed"
+  /** The board is closed to us: the host hasn't shared it. */
+  | "private"
+  /** The board needs a password; see joinWithPassword. */
+  | "password-needed"
+  | "password-wrong"
+  | "too-many-tries"
   /** The server rejected our login (expired or invalid). Sign out and rejoin as a guest. */
   | "unauthorized"
   /** The server couldn't check logins right now; retrying. */
@@ -43,6 +50,9 @@ export type RoomConnection = {
   settings: BoardSettings;
   /** How many people the host has removed (shown to the host). */
   removedCount: number;
+  hasPassword: boolean;
+  /** Try joining again with a password, after a password problem. */
+  joinWithPassword: (password: string) => void;
 };
 
 const AUTH_RETRY_MS = 5_000;
@@ -70,6 +80,7 @@ export function useRoomConnection(roomId: string): RoomConnection {
   const [hasHost, setHasHost] = useState(false);
   const [settings, setSettings] = useState<BoardSettings>(DEFAULT_BOARD_SETTINGS);
   const [removedCount, setRemovedCount] = useState(0);
+  const [hasPassword, setHasPassword] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -96,16 +107,25 @@ export function useRoomConnection(roomId: string): RoomConnection {
       }
     };
     const onUsers = ({ users: next }: { users: Participant[] }) => setUsers(next);
-    const onRoomError = ({ reason }: { reason: "not-found" | "removed" }) => setProblem(reason);
-    const onState = (state: { name: string; role: Role; hasHost: boolean; settings: BoardSettings }) => {
+    const onRoomError = ({ reason }: { reason: RoomErrorReason }) => setProblem(reason);
+    const onState = (state: {
+      name: string;
+      role: Role;
+      hasHost: boolean;
+      settings: BoardSettings;
+      hasPassword: boolean;
+    }) => {
+      setProblem(null);
       setBoardName(state.name);
       setRole(state.role);
       setHasHost(state.hasHost);
       setSettings(state.settings);
+      setHasPassword(state.hasPassword);
     };
-    const onSettings = (next: { settings: BoardSettings; removedCount: number }) => {
+    const onSettings = (next: { settings: BoardSettings; removedCount: number; hasPassword: boolean }) => {
       setSettings(next.settings);
       setRemovedCount(next.removedCount);
+      setHasPassword(next.hasPassword);
     };
     const onRole = ({ role: next }: { role: Role }) => setRole(next);
     const onRenamed = ({ name }: { name: string }) => setBoardName(name);
@@ -140,5 +160,23 @@ export function useRoomConnection(roomId: string): RoomConnection {
     };
   }, [socket, roomId]);
 
-  return { status, socket, users, selfId, problem, boardName, role, hasHost, settings, removedCount };
+  const joinWithPassword = (password: string) => {
+    setProblem("password-needed"); // clears the last error while this try is checked
+    socket?.emit("room:join", { roomId, password });
+  };
+
+  return {
+    status,
+    socket,
+    users,
+    selfId,
+    problem,
+    boardName,
+    role,
+    hasHost,
+    settings,
+    removedCount,
+    hasPassword,
+    joinWithPassword,
+  };
 }

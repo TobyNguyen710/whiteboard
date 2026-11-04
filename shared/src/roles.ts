@@ -23,13 +23,28 @@ export type BoardSettings = {
   /** When locked, only the host can draw; everyone keeps their role for when it's unlocked. */
   locked: boolean;
   clearPolicy: ClearPolicy;
+  /** When shared, anyone with the link or board ID can join (with the password, if there is one). */
+  shared: boolean;
 };
 
 export const DEFAULT_BOARD_SETTINGS: BoardSettings = {
   defaultRole: DEFAULT_ROLE,
   locked: false,
   clearPolicy: "host",
+  shared: false,
 };
+
+export const MIN_BOARD_PASSWORD_LENGTH = 4;
+export const MAX_BOARD_PASSWORD_LENGTH = 64;
+
+/** Accepts unknown because passwords arriving over the socket are untrusted. */
+export function isValidBoardPassword(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length >= MIN_BOARD_PASSWORD_LENGTH &&
+    value.length <= MAX_BOARD_PASSWORD_LENGTH
+  );
+}
 
 /** Keep only valid fields from an untrusted settings change. */
 export function parseSettingsChange(value: unknown): Partial<BoardSettings> {
@@ -39,6 +54,7 @@ export function parseSettingsChange(value: unknown): Partial<BoardSettings> {
   if (isAssignableRole(v.defaultRole)) change.defaultRole = v.defaultRole;
   if (typeof v.locked === "boolean") change.locked = v.locked;
   if (v.clearPolicy === "host" || v.clearPolicy === "editors") change.clearPolicy = v.clearPolicy;
+  if (typeof v.shared === "boolean") change.shared = v.shared;
   return change;
 }
 

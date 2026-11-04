@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_BOARD_SETTINGS, isAssignableRole, parseSettingsChange, permissionsFor } from "./roles.js";
+import {
+  DEFAULT_BOARD_SETTINGS,
+  isAssignableRole,
+  isValidBoardPassword,
+  parseSettingsChange,
+  permissionsFor,
+} from "./roles.js";
 
 describe("permissionsFor", () => {
   it("lets the host do everything", () => {
@@ -70,6 +76,25 @@ describe("parseSettingsChange", () => {
       clearPolicy: "editors",
     });
     expect(parseSettingsChange({ defaultRole: "host", locked: "yes", clearPolicy: "everyone", extra: 1 })).toEqual({});
+    expect(parseSettingsChange({ shared: true })).toEqual({ shared: true });
+    expect(parseSettingsChange({ shared: "yes", hasPassword: true, passwordHash: "x" })).toEqual({});
     expect(parseSettingsChange(null)).toEqual({});
+  });
+});
+
+describe("board settings defaults", () => {
+  it("starts boards closed", () => {
+    expect(DEFAULT_BOARD_SETTINGS.shared).toBe(false);
+  });
+});
+
+describe("isValidBoardPassword", () => {
+  it("accepts 4 to 64 characters of text", () => {
+    expect(isValidBoardPassword("abcd")).toBe(true);
+    expect(isValidBoardPassword("x".repeat(64))).toBe(true);
+    expect(isValidBoardPassword("abc")).toBe(false);
+    expect(isValidBoardPassword("x".repeat(65))).toBe(false);
+    expect(isValidBoardPassword(null)).toBe(false);
+    expect(isValidBoardPassword(12345)).toBe(false);
   });
 });

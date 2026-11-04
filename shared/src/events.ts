@@ -15,7 +15,8 @@ export type StrokePointsPayload = { strokeId: string; points: Point[] };
 export type StrokeEndPayload = { strokeId: string };
 
 export interface ClientToServerEvents {
-  "room:join": (payload: { roomId: string }) => void;
+  /** `password` is only needed the first time, on a shared board that has one. */
+  "room:join": (payload: { roomId: string; password?: string }) => void;
   "stroke:start": (payload: StrokeStartPayload) => void;
   "stroke:points": (payload: StrokePointsPayload) => void;
   "stroke:end": (payload: StrokeEndPayload) => void;
@@ -37,10 +38,19 @@ export interface ClientToServerEvents {
   "board:allow-removed": () => void;
   /** Host only: change board settings (any subset of fields). */
   "board:update-settings": (payload: Partial<BoardSettings>) => void;
+  /** Host: set the board's password, or remove it with null. */
+  "board:set-password": (payload: { password: string | null }, done: (result: { ok: boolean }) => void) => void;
 }
 
 /** Why the server refused to put you on a board. */
 export type RoomErrorReason =
+  /** The board is closed: the host hasn't shared it, and you haven't joined it before. */
+  | "private"
+  /** The board is shared with a password; ask for it. */
+  | "password-needed"
+  | "password-wrong"
+  /** Too many wrong passwords; try again in a minute. */
+  | "too-many-tries"
   /** The board doesn't exist, and only signed-in users can create boards. */
   | "not-found"
   /** The host removed you from this board. */
@@ -57,9 +67,10 @@ export interface ServerToClientEvents {
     role: Role;
     hasHost: boolean;
     settings: BoardSettings;
+    hasPassword: boolean;
   }) => void;
   /** Board settings changed. `removedCount` is how many people are currently kept off it. */
-  "board:settings": (payload: { settings: BoardSettings; removedCount: number }) => void;
+  "board:settings": (payload: { settings: BoardSettings; removedCount: number; hasPassword: boolean }) => void;
   /** Your role changed (the host changed it). */
   "member:role": (payload: { role: Role }) => void;
   "board:renamed": (payload: { name: string }) => void;

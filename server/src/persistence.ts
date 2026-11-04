@@ -14,6 +14,12 @@ export type SavedBoard = {
   /** Roles the host gave signed-in members, by account ID (only non-default roles). */
   memberRoles?: Record<string, AssignableRole>;
   settings?: BoardSettings;
+  /** Only filled in by load: passwords and access are saved separately, as soon as they change. */
+  passwordHash?: string | null;
+  /** Accounts that have opened this board, by account ID. */
+  members?: string[];
+  /** Guests who got in, by guest ID. */
+  guests?: string[];
 };
 
 /** Just enough to check permissions without loading the drawing. */
@@ -35,6 +41,10 @@ export interface BoardStore {
   removeMember(boardId: string, userId: string): Promise<void>;
   /** Save a signed-in member's role on a board. */
   setMemberRole(boardId: string, userId: string, role: AssignableRole): Promise<void>;
+  /** Save the board's password hash (null removes it). The board must already be saved. */
+  savePassword(boardId: string, passwordHash: string | null): Promise<void>;
+  /** Save which guests got in. The board must already be saved. */
+  saveGuests(boardId: string, guests: string[]): Promise<void>;
   /** Cheap request that throws if the store can't be reached. */
   ping(): Promise<void>;
 }
@@ -46,6 +56,8 @@ export class MemoryBoardStore implements BoardStore {
   readonly members = new Map<string, number>();
   /** "boardId userId" -> role, for members whose role isn't the default. */
   readonly roles = new Map<string, AssignableRole>();
+  readonly passwords = new Map<string, string>();
+  readonly guests = new Map<string, string[]>();
 
   async load(boardId: string): Promise<SavedBoard | null> {
     const json = this.boards.get(boardId);
@@ -55,12 +67,22 @@ export class MemoryBoardStore implements BoardStore {
     for (const [key, role] of this.roles) {
       if (key.startsWith(`${boardId} `)) memberRoles[key.slice(boardId.length + 1)] = role;
     }
-    return { ...board, memberRoles };
+    const members: string[] = [];
+    for (const key of this.members.keys()) {
+      if (key.startsWith(`${boardId} `)) members.push(key.slice(boardId.length + 1));
+    }
+    return {
+      ...board,
+      memberRoles,
+      members,
+      passwordHash: this.passwords.get(boardId) ?? null,
+      guests: this.guests.get(boardId) ?? [],
+    };
   }
 
   async save(boardId: string, board: SavedBoard): Promise<void> {
     // Roles are stored separately (like the board_members table), not with the drawing.
-    const { memberRoles: _roles, ...rest } = board;
+    const { memberRoles: _roles, members: _members, passwordHash: _hash, guests: _guests, ...rest } = board;
     this.boards.set(boardId, JSON.stringify(rest));
   }
 
@@ -78,6 +100,8 @@ export class MemoryBoardStore implements BoardStore {
     this.boards.delete(boardId);
     for (const key of this.members.keys()) if (key.startsWith(`${boardId} `)) this.members.delete(key);
     for (const key of this.roles.keys()) if (key.startsWith(`${boardId} `)) this.roles.delete(key);
+    this.passwords.delete(boardId);
+    this.guests.delete(boardId);
   }
 
   async recordVisit(boardId: string, userId: string): Promise<void> {
@@ -93,6 +117,17 @@ export class MemoryBoardStore implements BoardStore {
   async setMemberRole(boardId: string, userId: string, role: AssignableRole): Promise<void> {
     if (!this.boards.has(boardId)) throw new Error("board must be saved before setting roles");
     this.roles.set(`${boardId} ${userId}`, role);
+  }
+
+  async savePassword(boardId: string, passwordHash: string | null): Promise<void> {
+    if (!this.boards.has(boardId)) throw new Error("board must be saved before setting a password");
+    if (passwordHash) this.passwords.set(boardId, passwordHash);
+    else this.passwords.delete(boardId);
+  }
+
+  async saveGuests(boardId: string, guests: string[]): Promise<void> {
+    if (!this.boards.has(boardId)) throw new Error("board must be saved before saving guests");
+    this.guests.set(boardId, [...guests]);
   }
 
   async ping(): Promise<void> {}
@@ -144,6 +179,11 @@ export class BoardSaver {
         memberRoles: new Map(
           Object.entries(saved?.memberRoles ?? {}).map(([accountId, role]) => [`a:${accountId}`, role]),
         ),
+        passwordHash: saved?.passwordHash ?? null,
+        admitted: [
+          ...(saved?.members ?? []).map((accountId) => `a:${accountId}`),
+          ...(saved?.guests ?? []).map((guestId) => `g:${guestId}`),
+        ],
       });
       this.savedRevisions.set(roomId, room.revision);
     } catch (error) {

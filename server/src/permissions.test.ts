@@ -89,6 +89,12 @@ async function join(boardId: string, auth: HandshakeAuth) {
   const client = await connect(auth);
   client.emit("room:join", { roomId: boardId });
   const state = await next(client, "room:state");
+  // Boards start closed; the host shares them so others can join.
+  if (state.role === "host" && !state.settings.shared) {
+    client.emit("board:update-settings", { shared: true });
+    await next(client, "board:settings");
+    await next(client, "member:role");
+  }
   return { client, state };
 }
 
@@ -240,8 +246,9 @@ describe("board settings", () => {
 
     host.emit("board:update-settings", { locked: true, defaultRole: "host" as "editor" });
     expect(await next(bob, "board:settings")).toEqual({
-      settings: { defaultRole: "editor", locked: true, clearPolicy: "host" },
+      settings: { defaultRole: "editor", locked: true, clearPolicy: "host", shared: true },
       removedCount: 0,
+      hasPassword: false,
     });
   });
 
@@ -298,6 +305,7 @@ describe("board settings", () => {
       defaultRole: "viewer",
       locked: true,
       clearPolicy: "editors",
+      shared: true,
     });
   });
 });

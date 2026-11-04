@@ -51,6 +51,10 @@ export type Room = {
    * forgotten when the board is unloaded.
    */
   removed: Set<string>;
+  /** Hash of the board's password, or null if it has none. */
+  passwordHash: string | null;
+  /** Member keys who got in, so they keep access when sharing is off or the password changes. */
+  admitted: Set<string>;
   /**
    * True for a board that has never been saved and nobody signed in has opened yet. When an
    * account is required to create boards, guests can't join these (the board doesn't exist).
@@ -90,6 +94,8 @@ export class RoomStore {
       thumbnail = null,
       memberRoles = new Map(),
       settings = DEFAULT_BOARD_SETTINGS,
+      passwordHash = null,
+      admitted = [],
     }: {
       ownerId?: string | null;
       isNew?: boolean;
@@ -97,6 +103,8 @@ export class RoomStore {
       thumbnail?: string | null;
       memberRoles?: Map<string, AssignableRole>;
       settings?: BoardSettings;
+      passwordHash?: string | null;
+      admitted?: Iterable<string>;
     } = {},
   ): Room {
     const existing = this.rooms.get(roomId);
@@ -121,6 +129,8 @@ export class RoomStore {
       memberRoles: new Map(memberRoles),
       settings: { ...settings },
       removed: new Set(),
+      passwordHash,
+      admitted: new Set(admitted),
       emptySince: this.now(),
     };
     for (const stroke of strokes) room.seqById.set(stroke.id, room.nextSeq++);
@@ -334,6 +344,35 @@ export class RoomStore {
   /** Let everyone the host removed join again. */
   allowRemoved(roomId: string): void {
     this.rooms.get(roomId)?.removed.clear();
+  }
+
+  /**
+   * True if this person can open the board without the link or password: its owner, anyone who
+   * got in before, and everyone on boards with no owner (nobody could ever share those).
+   */
+  hasAccess(roomId: string, memberKey: string, accountId: string | null): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room) return false;
+    if (room.ownerId === null || (accountId !== null && room.ownerId === accountId)) return true;
+    return room.admitted.has(memberKey);
+  }
+
+  /** Remember that someone got in. Returns false if they already had. */
+  admit(roomId: string, memberKey: string): boolean {
+    const room = this.rooms.get(roomId);
+    if (!room || room.admitted.has(memberKey)) return false;
+    room.admitted.add(memberKey);
+    return true;
+  }
+
+  /** Take away someone's access. Returns false if they didn't have it. */
+  revoke(roomId: string, memberKey: string): boolean {
+    return this.rooms.get(roomId)?.admitted.delete(memberKey) ?? false;
+  }
+
+  setPasswordHash(roomId: string, passwordHash: string | null): void {
+    const room = this.rooms.get(roomId);
+    if (room) room.passwordHash = passwordHash;
   }
 
   /** Drop a board from memory immediately (it was deleted). */

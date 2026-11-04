@@ -810,6 +810,62 @@ body {
   cursor: default;
 }
 
+/* Keep a long link from pushing its Copy button out of the popover. */
+.share-value {
+  min-width: 0;
+}
+
+.share-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.password-form {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.password-input {
+  flex: 1 1 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+.password-actions {
+  display: flex;
+  flex: none;
+  gap: 10px;
+}
+
+.password-error {
+  display: block;
+  flex-basis: 100%;
+  font-size: 12px;
+  color: var(--danger);
+}
+
+/* Covers the board until you're allowed in. */
+.board-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: auto;
+  background: var(--page);
+}
+
+.gate-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .setting-name {
   display: block;
   font-weight: 600;

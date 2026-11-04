@@ -9,6 +9,7 @@ import {
 import { AccountMenu } from "./AccountMenu";
 import { BoardSettingsMenu } from "./BoardSettingsMenu";
 import { ParticipantList } from "./ParticipantList";
+import { ShareIcon, ShareMenu } from "./ShareMenu";
 import type { ConnectionStatus } from "./useRoomConnection";
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
@@ -40,6 +41,16 @@ type Props = {
     onChange: (change: Partial<BoardSettings>) => void;
     onAllowRemoved: () => void;
   };
+  /** Host only: turn sharing on or off and set a password. */
+  sharing?: {
+    boardId: string;
+    shared: boolean;
+    hasPassword: boolean;
+    onSharedChange: (shared: boolean) => void;
+    onSetPassword: (password: string | null) => Promise<boolean>;
+  };
+  /** False on a closed board, where the link wouldn't let anyone in. */
+  canCopyLink: boolean;
 };
 
 export function BoardTopBar({
@@ -55,6 +66,8 @@ export function BoardTopBar({
   onRemove,
   drawBlocked,
   settings,
+  sharing,
+  canCopyLink,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
@@ -156,24 +169,22 @@ export function BoardTopBar({
             {STATUS_LABELS[status]}
           </span>
         )}
-        <button
-          type="button"
-          className="share-button"
-          title="Copy the board link"
-          aria-label={copied ? "Link copied" : "Share"}
-          onClick={() => void share()}
-        >
-          <svg className="share-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-            <path
-              d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </svg>
-          <span className="share-label">{copied ? "Link copied!" : "Share"}</span>
-        </button>
+        {sharing && status === "connected" ? (
+          <ShareMenu {...sharing} />
+        ) : (
+          canCopyLink && (
+            <button
+              type="button"
+              className="share-button"
+              title="Copy the board link"
+              aria-label={copied ? "Link copied" : "Share"}
+              onClick={() => void share()}
+            >
+              <ShareIcon />
+              <span className="share-label">{copied ? "Link copied!" : "Share"}</span>
+            </button>
+          )
+        )}
         {settings && status === "connected" && (
           <BoardSettingsMenu
             settings={settings.value}

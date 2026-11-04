@@ -27,23 +27,30 @@ export class SupabaseBoardStore implements BoardStore {
   async load(boardId: string): Promise<SavedBoard | null> {
     const { data, error } = await this.db
       .from("boards")
-      .select("strokes, owner_id, name, thumbnail, default_role, locked, clear_policy")
+      .select("strokes, owner_id, name, thumbnail, default_role, locked, clear_policy, shared")
       .eq("id", boardId)
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!data) return null;
 
-    // Roles the host chose (null = not chosen, so the board's default role applies).
-    const roles = await this.db
-      .from("board_members")
-      .select("user_id, role")
-      .eq("board_id", boardId)
-      .not("role", "is", null);
-    if (roles.error) throw new Error(roles.error.message);
+    // Everyone who has opened the board, and the roles the host chose (null = not chosen, so the
+    // board's default role applies).
+    const rows = await this.db.from("board_members").select("user_id, role").eq("board_id", boardId);
+    if (rows.error) throw new Error(rows.error.message);
+    const members: string[] = [];
     const memberRoles: Record<string, AssignableRole> = {};
-    for (const row of roles.data ?? []) {
-      if (typeof row.user_id === "string" && isAssignableRole(row.role)) memberRoles[row.user_id] = row.role;
+    for (const row of rows.data ?? []) {
+      if (typeof row.user_id !== "string") continue;
+      members.push(row.user_id);
+      if (isAssignableRole(row.role)) memberRoles[row.user_id] = row.role;
     }
+
+    const access = await this.db
+      .from("board_access")
+      .select("password_hash, guests")
+      .eq("board_id", boardId)
+      .maybeSingle();
+    if (access.error) throw new Error(access.error.message);
 
     return {
       strokes: parseStoredStrokes(data.strokes),
@@ -51,10 +58,14 @@ export class SupabaseBoardStore implements BoardStore {
       name: cleanBoardName(data.name) ?? DEFAULT_BOARD_NAME,
       thumbnail: isValidThumbnail(data.thumbnail) ? data.thumbnail : null,
       memberRoles,
+      members,
+      passwordHash: typeof access.data?.password_hash === "string" ? access.data.password_hash : null,
+      guests: Array.isArray(access.data?.guests) ? (access.data.guests as string[]) : [],
       settings: {
         defaultRole: isAssignableRole(data.default_role) ? data.default_role : DEFAULT_BOARD_SETTINGS.defaultRole,
         locked: data.locked === true,
         clearPolicy: data.clear_policy === "editors" ? "editors" : "host",
+        shared: data.shared === true,
       },
     };
   }
@@ -69,6 +80,7 @@ export class SupabaseBoardStore implements BoardStore {
       default_role: (board.settings ?? DEFAULT_BOARD_SETTINGS).defaultRole,
       locked: (board.settings ?? DEFAULT_BOARD_SETTINGS).locked,
       clear_policy: (board.settings ?? DEFAULT_BOARD_SETTINGS).clearPolicy,
+      shared: (board.settings ?? DEFAULT_BOARD_SETTINGS).shared,
       updated_at: new Date().toISOString(),
     });
     if (error) throw new Error(error.message);
@@ -123,6 +135,17 @@ export class SupabaseBoardStore implements BoardStore {
     const { error } = await this.db
       .from("board_members")
       .upsert({ board_id: boardId, user_id: userId, role }, { onConflict: "board_id,user_id" });
+    if (error) throw new Error(error.message);
+  }
+
+  async savePassword(boardId: string, passwordHash: string | null): Promise<void> {
+    // Upsert only this column, so saving guests at the same moment can't undo a password change.
+    const { error } = await this.db.from("board_access").upsert({ board_id: boardId, password_hash: passwordHash });
+    if (error) throw new Error(error.message);
+  }
+
+  async saveGuests(boardId: string, guests: string[]): Promise<void> {
+    const { error } = await this.db.from("board_access").upsert({ board_id: boardId, guests });
     if (error) throw new Error(error.message);
   }
 

@@ -4,6 +4,26 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-04
+
+Private boards: closed until the host shares them, with an optional password.
+
+### Added
+- Boards start closed: only the host and people who already joined can open one. The host turns sharing on from the Share menu, and people join with the link or by typing the board ID.
+- Optional board password (4 to 64 characters, none by default), needed once by each new person. Set, changed, or removed from the Share menu.
+- Wrong passwords are limited to 5 a minute per address and 30 a minute per board.
+- "This board is private" and password screens.
+
+### Changed
+- Every existing board is now closed until its host shares it. Signed-in people who opened a board before keep access; guests need the host to turn sharing on. Boards from before accounts have no host, so they stay open.
+- Turning sharing off or changing the password only stops new people. Anyone who already joined stays.
+- Removing someone also takes away their access, so a closed board stays closed to them after a server restart or "Allow back".
+- Share is a menu for the host. Other people only see it while the board is shared.
+
+### Security
+- Password hashes (scrypt) and guest access are kept in a new `board_access` table only the server can read, not in `boards`, which members can read.
+- Board previews are ignored from anyone not on the board yet.
+
 ## [2.0.0] - 2026-11-04
 
 A real site: accounts, a dashboard, saved boards, guests, and roles with host controls.
@@ -76,6 +96,7 @@ First release: live, shared freehand drawing.
 - GitHub Actions CI runs lint, typecheck, tests, and build on every push and pull request.
 - Deployed: client on Vercel, server on Render (`render.yaml` blueprint, `/health` check).
 
-[Unreleased]: https://github.com/TobyNguyen710/whiteboard/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/TobyNguyen710/whiteboard/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/TobyNguyen710/whiteboard/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/TobyNguyen710/whiteboard/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/TobyNguyen710/whiteboard/releases/tag/v1.0.0

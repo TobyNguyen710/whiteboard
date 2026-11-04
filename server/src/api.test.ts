@@ -72,11 +72,13 @@ function next<E extends EventName>(
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 100));
 
-/** Alice opens (and so creates) a board; returns her client and what she got on joining. */
+/** Alice opens (and so creates) a board and shares it; returns her client and what she got on joining. */
 async function aliceCreates(boardId: string) {
   const alice = await connect({ token: "alice-token" });
   alice.emit("room:join", { roomId: boardId });
   const state = await next(alice, "room:state");
+  alice.emit("board:update-settings", { shared: true });
+  await next(alice, "board:settings");
   return { alice, state };
 }
 

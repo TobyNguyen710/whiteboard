@@ -5,6 +5,7 @@ import {
   cleanDisplayName,
   DEFAULT_GUEST_NAME,
   isAssignableRole,
+  isValidBoardPassword,
   isValidGuestId,
   isValidRoomId,
   isValidThumbnail,
@@ -13,13 +14,22 @@ import {
   type Permissions,
   type ClientToServerEvents,
   type Participant,
+  type RoomErrorReason,
   type ServerToClientEvents,
 } from "@whiteboard/shared";
 import { handleApi, type ApiContext } from "./api.js";
+import { AttemptLimiter } from "./attempts.js";
 import type { Authenticator } from "./auth.js";
+import { hashPassword, verifyPassword } from "./password.js";
 import { BoardSaver, type BoardStore } from "./persistence.js";
 import { RoomStore } from "./rooms.js";
 import { parseStrokeEnd, parseStrokePoints, parseStrokeStart } from "./validate.js";
+
+/** Wrong passwords allowed per minute, from one address and on one board overall. */
+const PASSWORD_TRIES_PER_ADDRESS = 5;
+const PASSWORD_TRIES_PER_BOARD = 30;
+/** Guests remembered per board; the most recent are kept. */
+const MAX_SAVED_GUESTS = 500;
 
 /** Who is behind a connection: a verified account, or a guest with a chosen name. */
 type SocketUser = {
@@ -69,6 +79,7 @@ export function createWhiteboardServer({
 }: WhiteboardServerOptions): WhiteboardServer {
   const rooms = new RoomStore();
   const saver = new BoardSaver(boardStore, rooms, log);
+  const passwordTries = new AttemptLimiter();
 
   // Plain HTTP answers health checks (used by Render, and handy for waking a sleeping instance).
   // /health/db also touches the database, which keeps a free Supabase project from pausing.
@@ -136,7 +147,12 @@ export function createWhiteboardServer({
   /** Tell everyone on a board the current settings. */
   const broadcastSettings = (roomId: string) => {
     const room = rooms.get(roomId);
-    if (room) io.to(roomId).emit("board:settings", { settings: room.settings, removedCount: room.removed.size });
+    if (!room) return;
+    io.to(roomId).emit("board:settings", {
+      settings: room.settings,
+      removedCount: room.removed.size,
+      hasPassword: room.passwordHash !== null,
+    });
   };
 
   /** Re-send everyone their role (e.g. after the default role changed) and the people list. */
@@ -193,6 +209,52 @@ export function createWhiteboardServer({
     });
   };
 
+  /** Remember which guests got in, so they keep access after the server restarts. Best effort. */
+  const saveGuests = (roomId: string) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const guests = [...room.admitted]
+      .filter((key) => key.startsWith("g:"))
+      .map((key) => key.slice(2))
+      .slice(-MAX_SAVED_GUESTS);
+    boardStore?.saveGuests(roomId, guests).catch((error: unknown) => {
+      log(`could not save guests on ${roomId}: ${error instanceof Error ? error.message : String(error)}`);
+    });
+  };
+
+  /**
+   * Check whether this connection may open a board it's loading. Returns why not, or null if it
+   * may. The address comes from the proxy's header, which a client can fake, so the per-board
+   * limit is what really bounds guessing.
+   */
+  const refusalFor = async (
+    socket: { data: SocketData; handshake: { address: string; headers: Record<string, unknown> } },
+    roomId: string,
+    password: unknown,
+  ): Promise<RoomErrorReason | null> => {
+    const room = rooms.get(roomId);
+    if (!room) return "not-found";
+    const { memberKey, accountId } = socket.data.user;
+    if (rooms.hasAccess(roomId, memberKey, accountId)) return null;
+    if (!room.settings.shared) return "private";
+    if (!room.passwordHash) return null;
+    if (password === undefined || password === "") return "password-needed";
+    if (!isValidBoardPassword(password)) return "password-wrong";
+
+    const forwarded = socket.handshake.headers["x-forwarded-for"];
+    const address = typeof forwarded === "string" ? forwarded.split(",")[0]!.trim() : socket.handshake.address;
+    const addressKey = `${roomId} ${address}`;
+    if (!passwordTries.take(addressKey, PASSWORD_TRIES_PER_ADDRESS)) return "too-many-tries";
+    if (!passwordTries.take(roomId, PASSWORD_TRIES_PER_BOARD)) {
+      passwordTries.refund(addressKey);
+      return "too-many-tries";
+    }
+    if (!(await verifyPassword(password, room.passwordHash))) return "password-wrong";
+    passwordTries.refund(addressKey);
+    passwordTries.refund(roomId);
+    return null;
+  };
+
   const apiContext: ApiContext = {
     clientOrigins,
     authenticate,
@@ -201,6 +263,7 @@ export function createWhiteboardServer({
     deleteBoard,
     leaveBoardList: async (roomId, userId) => {
       await boardStore?.removeMember(roomId, userId);
+      rooms.revoke(roomId, `a:${userId}`);
     },
     log,
   };
@@ -286,6 +349,20 @@ export function createWhiteboardServer({
         return;
       }
 
+      // Closed boards stay closed: nothing about the board is sent until this passes.
+      const refusal = await refusalFor(socket, roomId, payload?.password);
+      if (!socket.connected || socket.data.roomId !== roomId) return;
+      if (refusal) {
+        socket.data.roomId = undefined;
+        socket.emit("room:error", { reason: refusal });
+        return;
+      }
+
+      const { memberKey } = socket.data.user;
+      if (rooms.get(roomId)?.ownerId !== null && rooms.admit(roomId, memberKey) && memberKey.startsWith("g:")) {
+        saveGuests(roomId);
+      }
+
       const room = rooms.join(roomId, userId);
       void socket.join(roomId);
 
@@ -296,6 +373,7 @@ export function createWhiteboardServer({
         role: rooms.roleOf(roomId, socket.data.user.memberKey, accountId),
         hasHost: room.ownerId !== null,
         settings: room.settings,
+        hasPassword: room.passwordHash !== null,
       });
       broadcastUsers(roomId);
       if (accountId) recordVisit(roomId, accountId);
@@ -365,7 +443,7 @@ export function createWhiteboardServer({
     socket.on("board:thumbnail", (payload) => {
       const roomId = socket.data.roomId;
       const image = payload?.image;
-      if (!roomId || !socket.data.user.accountId || !isValidThumbnail(image)) return;
+      if (!roomId || !permissionsOf(socket) || !socket.data.user.accountId || !isValidThumbnail(image)) return;
       rooms.setThumbnail(roomId, image);
     });
 
@@ -403,6 +481,26 @@ export function createWhiteboardServer({
       refreshRoles(roomId); // the default role or the lock can change what people may do
     });
 
+    // Host: set or remove the board's password. Saved before it takes effect, so a password the
+    // host was told is on can't vanish on the next restart. People already on the board stay.
+    socket.on("board:set-password", async (payload, done) => {
+      const reply = typeof done === "function" ? done : () => {};
+      const roomId = socket.data.roomId;
+      const password = payload?.password;
+      if (!roomId || !permissionsOf(socket)?.canManageBoard) return reply({ ok: false });
+      if (password !== null && !isValidBoardPassword(password)) return reply({ ok: false });
+      try {
+        const hash = password === null ? null : await hashPassword(password);
+        await boardStore?.savePassword(roomId, hash);
+        rooms.setPasswordHash(roomId, hash);
+        broadcastSettings(roomId);
+        reply({ ok: true });
+      } catch (error) {
+        log(`could not save password on ${roomId}: ${error instanceof Error ? error.message : String(error)}`);
+        reply({ ok: false });
+      }
+    });
+
     // Host: take someone off the board. All their tabs leave, and they can't rejoin until allowed.
     socket.on("member:remove", (payload) => {
       const roomId = socket.data.roomId;
@@ -413,6 +511,15 @@ export function createWhiteboardServer({
       if (rooms.roleOf(roomId, memberKey, accountId) === "host") return; // can't remove the host
 
       rooms.removeMember(roomId, memberKey);
+      // They lose their access too, so a closed board stays closed to them after a restart.
+      rooms.revoke(roomId, memberKey);
+      if (accountId) {
+        boardStore?.removeMember(roomId, accountId).catch((error: unknown) => {
+          log(`could not remove member on ${roomId}: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      } else if (memberKey.startsWith("g:")) {
+        saveGuests(roomId);
+      }
       for (const id of [...(io.sockets.adapter.rooms.get(roomId) ?? [])]) {
         const other = io.sockets.sockets.get(id);
         if (other?.data.user.memberKey !== memberKey) continue;

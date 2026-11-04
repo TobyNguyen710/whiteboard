@@ -304,6 +304,12 @@ describe("accounts and guests", () => {
 
   const connectAs = (handshake: HandshakeAuth) => connect(handshake, authUrl);
 
+  /** Boards start closed; the host shares them so others can join. */
+  const share = async (host: RecordingClient) => {
+    host.emit("board:update-settings", { shared: true });
+    await next(host, "board:settings");
+  };
+
   const connectError = (handshake: HandshakeAuth) =>
     new Promise<string>((resolve) => {
       const client = connectClient(authUrl, { transports: ["websocket"], forceNew: true, auth: handshake });
@@ -322,6 +328,7 @@ describe("accounts and guests", () => {
     const alice = await connectAs({ token: "alice-token" });
     alice.emit("room:join", { roomId: "names5678" });
     await next(alice, "room:state");
+    await share(alice);
 
     const guest = await connectAs({ guestName: "   Teal\u0000   Otter  " });
     guest.emit("room:join", { roomId: "names5678" });
@@ -362,6 +369,7 @@ describe("accounts and guests", () => {
     expect((await next(alice, "room:state")).strokes).toEqual([]);
     await auth.saver.flush();
     expect((await authStore.load("owned1234"))?.ownerId).toBe(ALICE.id);
+    await share(alice);
 
     const guest = await connectAs({ guestName: "Friend" });
     guest.emit("room:join", { roomId: "owned1234" });
@@ -372,6 +380,7 @@ describe("accounts and guests", () => {
     const alice = await connectAs({ token: "alice-token" });
     alice.emit("room:join", { roomId: "keepowner1" });
     await next(alice, "room:state");
+    await share(alice);
     const bob = await connectAs({ token: "bob-token" });
     bob.emit("room:join", { roomId: "keepowner1" });
     await next(bob, "room:state");
@@ -390,6 +399,7 @@ describe("accounts and guests", () => {
     const alice = await connectAs({ token: "alice-token" });
     alice.emit("room:join", { roomId: "rename1234" });
     await next(alice, "room:state");
+    await share(alice);
     const guest = await connectAs({ guestName: "Before" });
     guest.emit("room:join", { roomId: "rename1234" });
     await next(alice, "room:users", (p) => p.count === 2);
