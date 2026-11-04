@@ -5,6 +5,7 @@
   --surface: #ffffff;
   --page: #f5f5f7;
   --danger: #d0342c;
+  --focus: #1971c2;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: var(--ink);
 }
@@ -152,14 +153,77 @@ body {
   background: #3a3a40;
 }
 
-/* Hide the status text on narrow screens; the dot stays. */
+.share-icon {
+  display: none;
+}
+
+/* Narrow screens: hide the status text (the dot stays), shrink Share to an icon, and tighten
+   spacing so the board name keeps as much room as it can. */
 @media (max-width: 520px) {
+  .board-topbar {
+    gap: 6px;
+    padding-left: 6px;
+    padding-right: 8px;
+  }
+  .topbar-left,
+  .topbar-right {
+    gap: 6px;
+  }
+  .board-name,
+  .board-name-input {
+    max-width: none;
+    padding: 6px 4px;
+  }
+  .board-name-input {
+    width: 100%;
+  }
   .connection {
     font-size: 0;
   }
   .connection .status-dot {
     font-size: initial;
   }
+  .share-button {
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+  .share-icon {
+    display: block;
+  }
+  .share-label {
+    display: none;
+  }
+  .view-only-pill {
+    padding: 3px 8px;
+    font-size: 11px;
+  }
+}
+
+.wake-hint {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Keyboard focus is always visible. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .board-area {

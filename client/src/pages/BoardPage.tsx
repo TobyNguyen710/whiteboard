@@ -27,6 +27,8 @@ import { useRoomConnection } from "../useRoomConnection";
 import { useUndoShortcuts } from "../useUndoShortcuts";
 
 const THUMBNAIL_INTERVAL_MS = 15_000;
+/** How long "Connecting…" can show before we explain that the free server may be asleep. */
+const WAKE_HINT_DELAY_MS = 5_000;
 
 export function BoardPage() {
   const { roomId } = useParams();
@@ -62,6 +64,18 @@ function Board({ roomId }: { roomId: string }) {
   const canvasRef = useRef<CanvasHandle>(null);
   const lastSentThumbnailRef = useRef<string | null>(null);
   const connected = status === "connected";
+  const [slowConnect, setSlowConnect] = useState(false);
+
+  // The free server sleeps when idle and takes up to a minute to wake: say so instead of
+  // leaving people looking at "Connecting…".
+  useEffect(() => {
+    if (status !== "connecting") return;
+    const timer = setTimeout(() => setSlowConnect(true), WAKE_HINT_DELAY_MS);
+    return () => {
+      clearTimeout(timer);
+      setSlowConnect(false);
+    };
+  }, [status]);
 
   // The server rejected our login (expired or revoked): sign out and come back as a guest.
   useEffect(() => {
@@ -182,6 +196,11 @@ function Board({ roomId }: { roomId: string }) {
         }
       />
       <div className="board-area">
+        {slowConnect && (
+          <p className="wake-hint" role="status">
+            The server is waking up (free hosting). This can take up to a minute.
+          </p>
+        )}
         <Canvas
           ref={canvasRef}
           socket={socket}

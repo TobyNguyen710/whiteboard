@@ -4,8 +4,12 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-11-04
+
+A real site: accounts, a dashboard, saved boards, guests, and roles with host controls.
+
 ### Added
-- Home page: start a new board, join one by link or ID, and see your recent boards with thumbnails, names, and when you last opened them. Rename or remove boards from the list. (Stored in this browser for now; accounts come later in v2.)
+- Home page: start a new board, join one by link or ID, and see your recent boards with thumbnails, names, and when you last opened them. Rename or remove boards from the list. (Without login configured, this list is kept in the browser.)
 - Board page top bar: back to home, click-to-rename board name, connection status with "N online", and a Share button that copies the link.
 - Routing with React Router: `/` is the home page and `/board/:id` is a board; unknown or invalid links go home.
 - Saved boards (Supabase Postgres): boards load from the database when first opened, changes are saved every 2 seconds and on shutdown, so drawings survive server restarts and redeploys. Without Supabase settings the server keeps boards in memory as before.
@@ -27,6 +31,8 @@ All notable changes to this project are documented here. Format based on [Keep a
 - Host controls (board settings, saved with the board): the role new people get (can draw or view only), lock the board so only the host draws, and who can clear (only the host, or anyone who can draw).
 - The host can remove people from a board; they can't rejoin until the host allows them back. Removed people see a "You were removed" page; a locked board shows a "Board locked" label.
 - Member roles are stored only when the host chooses one, so the board's default role applies to everyone else.
+- A "server is waking up" note when connecting takes more than a few seconds (the free server sleeps when idle).
+- Visible keyboard focus outlines on every button, link, and field.
 
 ### Security
 - Upgraded dev tooling to clear all `npm audit` findings (7 → 0): Vite 5 → 8, Vitest 3 → 5, @vitejs/plugin-react 4 → 6. The issues were in the dev server and test runner only; production dependencies already had none. Removed the Vite version pin added for Vitest 3.
@@ -35,6 +41,8 @@ All notable changes to this project are documented here. Format based on [Keep a
 - Node 22.12+ or 24 is required (bounded so hosting doesn't jump to a new major version unannounced).
 - Stroke coordinates are rounded to 0.1 board px on the server (invisible, keeps saved boards small).
 - Opening the site no longer jumps straight into a new board; the floating board badge is replaced by the top bar and home page.
+- The board top bar fits narrow phone screens: Share becomes an icon and spacing tightens so the board name keeps its room.
+- README rewritten for v2: what to try first, how saving, login, and roles work, and the updated roadmap (v3 paint tools, v4 free in-browser AI drawing).
 
 ## [1.0.0] - 2026-10-21
 
@@ -68,5 +76,6 @@ First release: live, shared freehand drawing.
 - GitHub Actions CI runs lint, typecheck, tests, and build on every push and pull request.
 - Deployed: client on Vercel, server on Render (`render.yaml` blueprint, `/health` check).
 
-[Unreleased]: https://github.com/TobyNguyen710/whiteboard/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/TobyNguyen710/whiteboard/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/TobyNguyen710/whiteboard/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/TobyNguyen710/whiteboard/releases/tag/v1.0.0
