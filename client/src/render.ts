@@ -1,4 +1,4 @@
-import { CANVAS_HEIGHT, CANVAS_WIDTH, type Point, type Stroke } from "@whiteboard/shared";
+import { CANVAS_HEIGHT, CANVAS_WIDTH, type BoardElement, type Point, type Stroke } from "@whiteboard/shared";
 
 // Strokes are smoothed with quadratic curves: each point is a control point and the curve
 // passes through the midpoints between neighbours. drawStroke (full redraw) and the incremental
@@ -85,21 +85,34 @@ export function drawStrokeTail(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   ctx.stroke();
 }
 
-/** Fill the board and draw every stroke. Assumes the context is already in board coordinates. */
-export function paintBoard(ctx: CanvasRenderingContext2D, strokes: Stroke[]) {
-  ctx.fillStyle = BOARD_COLOR;
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  for (const stroke of strokes) drawStroke(ctx, stroke);
+/** Draw any element from scratch. Adding an element kind without drawing it is a type error. */
+export function drawElement(ctx: CanvasRenderingContext2D, element: BoardElement) {
+  switch (element.type) {
+    case "stroke":
+      drawStroke(ctx, element);
+      return;
+    default: {
+      const unhandled: never = element.type;
+      throw new Error(`no renderer for ${String(unhandled)}`);
+    }
+  }
 }
 
-/** Small JPEG of the whole board (for dashboard cards), drawn from the strokes, not the screen. */
-export function renderThumbnail(strokes: Stroke[], width = 320): string {
+/** Fill the board and draw every element. Assumes the context is already in board coordinates. */
+export function paintBoard(ctx: CanvasRenderingContext2D, elements: BoardElement[]) {
+  ctx.fillStyle = BOARD_COLOR;
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  for (const element of elements) drawElement(ctx, element);
+}
+
+/** Small JPEG of the whole board (for dashboard cards), drawn from the elements, not the screen. */
+export function renderThumbnail(elements: BoardElement[], width = 320): string {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = Math.round((width * CANVAS_HEIGHT) / CANVAS_WIDTH);
   const ctx = canvas.getContext("2d");
   if (!ctx) return "";
   ctx.scale(width / CANVAS_WIDTH, width / CANVAS_WIDTH);
-  paintBoard(ctx, strokes);
+  paintBoard(ctx, elements);
   return canvas.toDataURL("image/jpeg", 0.7);
 }

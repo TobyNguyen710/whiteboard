@@ -181,7 +181,7 @@ describe("live strokes", () => {
 
     const c = await connect();
     c.emit("room:join", { roomId: "late1234" });
-    const { strokes } = await next(c, "room:state");
+    const { elements: strokes } = await next(c, "room:state");
     expect(strokes.map((s) => [s.id, s.points.length])).toEqual([
       ["done", 1],
       ["live", 2],
@@ -199,13 +199,13 @@ describe("undo / redo", () => {
     a.emit("stroke:end", { strokeId: "s1" });
     await next(b, "stroke:end");
 
-    a.emit("stroke:undo");
-    expect(await next(a, "stroke:removed")).toEqual({ strokeId: "s1" });
-    expect(await next(b, "stroke:removed")).toEqual({ strokeId: "s1" });
+    a.emit("board:undo");
+    expect(await next(a, "element:removed")).toEqual({ elementId: "s1" });
+    expect(await next(b, "element:removed")).toEqual({ elementId: "s1" });
 
-    a.emit("stroke:redo");
-    const restored = await next(b, "stroke:restored");
-    expect(restored.stroke.id).toBe("s1");
+    a.emit("board:redo");
+    const restored = await next(b, "element:restored");
+    expect(restored.element.id).toBe("s1");
     expect(restored.afterId).toBeNull();
   });
 
@@ -214,9 +214,9 @@ describe("undo / redo", () => {
     a.emit("stroke:start", startPayload("s1"));
     await next(b, "stroke:start");
 
-    b.emit("stroke:undo");
+    b.emit("board:undo");
     await settle();
-    expect(a.received.filter(([e]) => e === "stroke:removed")).toEqual([]);
+    expect(a.received.filter(([e]) => e === "element:removed")).toEqual([]);
   });
 });
 
@@ -232,7 +232,7 @@ describe("clear", () => {
 
     const c = await connect();
     c.emit("room:join", { roomId: "clear1234" });
-    expect((await next(c, "room:state")).strokes).toEqual([]);
+    expect((await next(c, "room:state")).elements).toEqual([]);
   });
 
   it("ignores a clear naming a different board", async () => {
@@ -240,6 +240,45 @@ describe("clear", () => {
     b.emit("board:clear", { roomId: "someother1" });
     await settle();
     expect(a.received.filter(([e]) => e === "board:cleared")).toEqual([]);
+  });
+});
+
+describe("finished elements", () => {
+  const element = (id: string) => ({
+    type: "stroke" as const,
+    id,
+    color: "#2f9e44",
+    size: 6,
+    tool: "pen" as const,
+    points: [
+      { x: 10, y: 10 },
+      { x: 20, y: 25 },
+    ],
+  });
+
+  it("adds an element in one go for everyone, tagged with its real author", async () => {
+    const { a, b } = await joinedPair("added1234");
+    a.emit("element:add", { element: { ...element("e1"), userId: "someone-else" } as never });
+    const { element: added } = await next(b, "element:added");
+    expect(added).toEqual({ ...element("e1"), userId: a.id });
+
+    // Its author can undo it, and late joiners see it.
+    a.emit("board:undo");
+    expect(await next(b, "element:removed")).toEqual({ elementId: "e1" });
+    a.emit("board:redo");
+    await next(b, "element:restored");
+    const c = await connect();
+    c.emit("room:join", { roomId: "added1234" });
+    expect((await next(c, "room:state")).elements.map((e) => e.id)).toEqual(["e1"]);
+  });
+
+  it("ignores invalid elements and elements from people not on a board", async () => {
+    const { a, b } = await joinedPair("added5678");
+    a.emit("element:add", { element: { ...element("bad"), color: "red" } });
+    const outsider = await connect();
+    outsider.emit("element:add", { element: element("sneaky") });
+    await settle();
+    expect(b.received.filter(([e]) => e === "element:added")).toEqual([]);
   });
 });
 
@@ -261,7 +300,7 @@ describe("saved boards", () => {
       clients.push(b);
       const state = new Promise<Payload<"room:state">>((resolve) => b.once("room:state", resolve));
       b.emit("room:join", { roomId: "restart1234" });
-      const { strokes } = await state;
+      const { elements: strokes } = await state;
       expect(strokes.map((s) => s.id)).toEqual(["kept"]);
       expect(strokes[0]!.points).toEqual([{ x: 10, y: 10 }, { x: 50, y: 60 }]);
     } finally {
@@ -366,7 +405,7 @@ describe("accounts and guests", () => {
   it("lets a signed-in user create a board, records them as owner, then guests can join", async () => {
     const alice = await connectAs({ token: "alice-token" });
     alice.emit("room:join", { roomId: "owned1234" });
-    expect((await next(alice, "room:state")).strokes).toEqual([]);
+    expect((await next(alice, "room:state")).elements).toEqual([]);
     await auth.saver.flush();
     expect((await authStore.load("owned1234"))?.ownerId).toBe(ALICE.id);
     await share(alice);
@@ -389,7 +428,7 @@ describe("accounts and guests", () => {
   });
 
   it("lets guests open boards saved before login existed (no owner)", async () => {
-    await authStore.save("legacy1234", { strokes: [], ownerId: null });
+    await authStore.save("legacy1234", { elements: [], ownerId: null });
     const guest = await connectAs({ guestName: "Old friend" });
     guest.emit("room:join", { roomId: "legacy1234" });
     await next(guest, "room:state");

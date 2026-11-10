@@ -1,6 +1,8 @@
 import {
   MAX_BRUSH_SIZE,
   MIN_BRUSH_SIZE,
+  type BoardElement,
+  type NewElement,
   type Point,
   type Stroke,
   type StrokeEndPayload,
@@ -67,30 +69,48 @@ export function parseStrokeEnd(v: unknown): StrokeEndPayload | null {
   return { strokeId: v.strokeId };
 }
 
+/** A whole stroke's fields, minus its ID and author. Null if any are invalid. */
+function parseStrokeBody(raw: Unknown, maxPoints: number): Omit<Stroke, "id" | "userId"> | null {
+  if (!isTool(raw.tool) || !isBrushSize(raw.size)) return null;
+  if (typeof raw.color !== "string" || !COLOR_PATTERN.test(raw.color)) return null;
+  if (!Array.isArray(raw.points) || raw.points.length === 0 || raw.points.length > maxPoints) return null;
+  const points: Point[] = [];
+  for (const p of raw.points) {
+    const point = parsePoint(p);
+    if (!point) return null;
+    points.push(point);
+  }
+  return { type: "stroke", color: raw.color, size: raw.size, tool: raw.tool, points };
+}
+
 /**
- * Strokes loaded from the database. Our own data, but checked anyway so a bad row can't crash
- * the server or reach clients: invalid strokes are dropped, the rest are kept.
+ * A finished element sent in one piece (element:add). Its author is filled in by the server, so
+ * any `userId` sent is ignored. Only strokes exist so far; other kinds come with v3.
  */
-export function parseStoredStrokes(v: unknown): Stroke[] {
+export function parseNewElement(v: unknown): NewElement | null {
+  if (!isObject(v) || !isObject(v.element)) return null;
+  const raw = v.element;
+  if (!isStrokeId(raw.id) || raw.type !== "stroke") return null;
+  const body = parseStrokeBody(raw, MAX_POINTS_PER_BATCH);
+  return body ? { ...body, id: raw.id } : null;
+}
+
+/**
+ * Elements loaded from the database. Our own data, but checked anyway so a bad row can't crash
+ * the server or reach clients: invalid elements are dropped, the rest are kept. Boards saved
+ * before elements had a `type` hold only strokes, so a missing type means a stroke.
+ */
+export function parseStoredElements(v: unknown): BoardElement[] {
   if (!Array.isArray(v)) return [];
-  const strokes: Stroke[] = [];
+  const elements: BoardElement[] = [];
   const seen = new Set<string>();
   for (const raw of v) {
-    if (!isObject(raw) || !isStrokeId(raw.id) || seen.has(raw.id)) continue;
-    if (typeof raw.userId !== "string" || !isTool(raw.tool) || !isBrushSize(raw.size)) continue;
-    if (typeof raw.color !== "string" || !COLOR_PATTERN.test(raw.color)) continue;
-    if (!Array.isArray(raw.points) || raw.points.length === 0) continue;
-    const points = raw.points.map(parsePoint);
-    if (points.some((p) => p === null)) continue;
+    if (!isObject(raw) || !isStrokeId(raw.id) || seen.has(raw.id) || typeof raw.userId !== "string") continue;
+    if (raw.type !== undefined && raw.type !== "stroke") continue;
+    const body = parseStrokeBody(raw, Number.POSITIVE_INFINITY);
+    if (!body) continue;
     seen.add(raw.id);
-    strokes.push({
-      id: raw.id,
-      userId: raw.userId,
-      color: raw.color,
-      size: raw.size,
-      tool: raw.tool,
-      points: points as Point[],
-    });
+    elements.push({ ...body, id: raw.id, userId: raw.userId });
   }
-  return strokes;
+  return elements;
 }

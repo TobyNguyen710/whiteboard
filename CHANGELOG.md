@@ -4,6 +4,14 @@ All notable changes to this project are documented here. Format based on [Keep a
 
 ## [Unreleased]
 
+### Changed
+- Groundwork for v3 paint tools: a board is now a list of elements (freehand strokes for now; lines, shapes, and text come next), each with a `type`. Undo, redo, clear, saving, and size limits work on any element. No visible change.
+- Undo/redo events are now `board:undo` / `board:redo`, and `element:removed` / `element:restored` tell everyone what changed.
+- Boards saved before this load as before: elements without a `type` are read as strokes.
+
+### Added
+- `element:add`: add a finished element in one message (for text and generated drawings), checked by role, validated, and tagged with its real author by the server.
+
 ## [2.1.0] - 2026-11-04
 
 Private boards: closed until the host shares them, with an optional password.

@@ -1,6 +1,7 @@
 import type { Participant } from "./participant.js";
 import type { AssignableRole, BoardSettings, Role } from "./roles.js";
-import type { Point, Stroke, Tool } from "./types.js";
+import type { BoardElement, NewElement } from "./elements.js";
+import type { Point, Tool } from "./types.js";
 
 export type StrokeStartPayload = {
   strokeId: string;
@@ -20,10 +21,12 @@ export interface ClientToServerEvents {
   "stroke:start": (payload: StrokeStartPayload) => void;
   "stroke:points": (payload: StrokePointsPayload) => void;
   "stroke:end": (payload: StrokeEndPayload) => void;
+  /** Add a finished element in one go (text, generated drawings). */
+  "element:add": (payload: { element: NewElement }) => void;
   "board:clear": (payload: { roomId: string }) => void;
-  /** Undo / redo your own most recent stroke on the current board. */
-  "stroke:undo": () => void;
-  "stroke:redo": () => void;
+  /** Undo / redo your own most recent element on the current board. */
+  "board:undo": () => void;
+  "board:redo": () => void;
   /** Guests can change the name others see. Signed-in users use their account name. */
   "user:rename": (payload: { name: string }) => void;
   /** Rename the board (owner only). */
@@ -62,7 +65,7 @@ export interface ServerToClientEvents {
    * host (boards from before accounts don't).
    */
   "room:state": (payload: {
-    strokes: Stroke[];
+    elements: BoardElement[];
     name: string;
     role: Role;
     hasHost: boolean;
@@ -79,12 +82,14 @@ export interface ServerToClientEvents {
   "stroke:start": (payload: StrokeStartPayload & { userId: string }) => void;
   "stroke:points": (payload: StrokePointsPayload) => void;
   "stroke:end": (payload: StrokeEndPayload) => void;
+  /** Someone added a finished element. */
+  "element:added": (payload: { element: BoardElement }) => void;
   "board:cleared": (payload: Record<string, never>) => void;
   /** Everyone on the board (including you). Sent whenever someone joins, leaves, or renames. */
   "room:users": (payload: { count: number; users: Participant[] }) => void;
   "room:error": (payload: { reason: RoomErrorReason }) => void;
-  /** A stroke was undone. Sent to everyone on the board, including its author. */
-  "stroke:removed": (payload: { strokeId: string }) => void;
-  /** A stroke was redone. Insert it after afterId (null = at the very bottom) to keep drawing order. */
-  "stroke:restored": (payload: { stroke: Stroke; afterId: string | null }) => void;
+  /** An element was undone. Sent to everyone on the board, including its author. */
+  "element:removed": (payload: { elementId: string }) => void;
+  /** An element was redone. Insert it after afterId (null = at the very bottom) to keep drawing order. */
+  "element:restored": (payload: { element: BoardElement; afterId: string | null }) => void;
 }

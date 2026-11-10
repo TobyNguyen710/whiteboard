@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import {
   CANVAS_HEIGHT,
   CANVAS_WIDTH,
+  type BoardElement,
   type Point,
   type ServerToClientEvents,
   type Stroke,
@@ -11,12 +12,22 @@ import { fitBoard, isOnBoard, screenToBoard, type Viewport } from "./board";
 import { PointBatcher } from "./pointBatcher";
 import {
   drawDot,
+  drawElement,
   drawLatestSegment,
   drawStrokeTail,
   paintBoard,
   renderThumbnail,
 } from "./render";
 import type { BoardSocket } from "./socket";
+
+/**
+ * The board's elements from room:state. A server from before v3 sends untyped `strokes`
+ * instead; that only happens for the few minutes the site and server deploy at different times.
+ * Remove once v3.0.0 has shipped.
+ */
+function elementsFromState(state: { elements?: BoardElement[]; strokes?: Omit<Stroke, "type">[] }): BoardElement[] {
+  return state.elements ?? (state.strokes ?? []).map((s) => ({ ...s, type: "stroke" as const }));
+}
 
 /** Smallest brush preview on screen, so tiny brushes on a zoomed-out board stay visible. */
 const MIN_CURSOR_DIAMETER = 4;
@@ -52,12 +63,12 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   /** Last hovering mouse/pen position (client px), so the preview can follow brush changes too. */
   const hoverRef = useRef<{ x: number; y: number } | null>(null);
   const viewportRef = useRef<Viewport>({ scale: 1, offsetX: 0, offsetY: 0 });
-  /** Every stroke on the board (local and remote) in drawing order, for redraws. */
-  const strokesRef = useRef<Stroke[]>([]);
+  /** Every element on the board (local and remote) in drawing order, for redraws. */
+  const elementsRef = useRef<BoardElement[]>([]);
   // Active local strokes keyed by pointerId, so multi-touch draws several lines at once.
   const activeRef = useRef(new Map<number, Stroke>());
-  /** Same strokes as strokesRef, by ID, so incoming points find their stroke. */
-  const strokesByIdRef = useRef(new Map<string, Stroke>());
+  /** Same elements as elementsRef, by ID, so incoming points find their stroke. */
+  const elementsByIdRef = useRef(new Map<string, BoardElement>());
   const batcherRef = useRef<PointBatcher | null>(null);
 
   const getContext = () => canvasRef.current?.getContext("2d") ?? null;
@@ -69,17 +80,23 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     ref,
     () => ({
       getThumbnail: () => {
-        const strokes = strokesRef.current;
-        if (strokes.length > 0) return renderThumbnail(strokes);
+        const elements = elementsRef.current;
+        if (elements.length > 0) return renderThumbnail(elements);
         return loadedRef.current ? null : undefined;
       },
     }),
     [],
   );
 
-  const addStroke = (stroke: Stroke) => {
-    strokesRef.current.push(stroke);
-    strokesByIdRef.current.set(stroke.id, stroke);
+  const addElement = (element: BoardElement) => {
+    elementsRef.current.push(element);
+    elementsByIdRef.current.set(element.id, element);
+  };
+
+  /** The stroke with this ID, if it's on the board (other elements don't take points). */
+  const strokeById = (id: string): Stroke | undefined => {
+    const element = elementsByIdRef.current.get(id);
+    return element?.type === "stroke" ? element : undefined;
   };
 
   const toBoardPoint = (e: { clientX: number; clientY: number }): Point => {
@@ -111,7 +128,7 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
       ctx.rect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       ctx.clip();
 
-      paintBoard(ctx, strokesRef.current);
+      paintBoard(ctx, elementsRef.current);
     };
 
     resize();
@@ -132,18 +149,20 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
 
     // Sent on every (re)join. The server's history replaces ours, except strokes this tab is
     // drawing right now, which stay on top.
-    const onState: ServerToClientEvents["room:state"] = ({ strokes }) => {
+    const onState: ServerToClientEvents["room:state"] = (state) => {
+      const elements = elementsFromState(state);
       loadedRef.current = true;
-      const serverIds = new Set(strokes.map((s) => s.id));
+      const serverIds = new Set(elements.map((e) => e.id));
       const drawing = [...activeRef.current.values()].filter((s) => !serverIds.has(s.id));
-      strokesRef.current = [...strokes, ...drawing];
-      strokesByIdRef.current = new Map(strokesRef.current.map((s) => [s.id, s]));
+      elementsRef.current = [...elements, ...drawing];
+      elementsByIdRef.current = new Map(elementsRef.current.map((e) => [e.id, e]));
       const ctx = getContext();
-      if (ctx) paintBoard(ctx, strokesRef.current);
+      if (ctx) paintBoard(ctx, elementsRef.current);
     };
 
     const onStart: ServerToClientEvents["stroke:start"] = (p) => {
       const stroke: Stroke = {
+        type: "stroke",
         id: p.strokeId,
         userId: p.userId,
         color: p.color,
@@ -151,14 +170,14 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         tool: p.tool,
         points: [p.point],
       };
-      addStroke(stroke);
+      addElement(stroke);
       const ctx = getContext();
       if (ctx) drawDot(ctx, stroke, p.point);
     };
 
     // Looks strokes up among all strokes, so ones still in progress when we joined keep growing.
     const onPoints: ServerToClientEvents["stroke:points"] = (p) => {
-      const stroke = strokesByIdRef.current.get(p.strokeId);
+      const stroke = strokeById(p.strokeId);
       const ctx = getContext();
       if (!stroke || !ctx) return;
       for (const point of p.points) {
@@ -168,51 +187,60 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     };
 
     const onEnd: ServerToClientEvents["stroke:end"] = (p) => {
-      const stroke = strokesByIdRef.current.get(p.strokeId);
+      const stroke = strokeById(p.strokeId);
       const ctx = getContext();
       if (stroke && ctx) drawStrokeTail(ctx, stroke);
+    };
+
+    // A finished element arrives in one piece and goes on top.
+    const onAdded: ServerToClientEvents["element:added"] = ({ element }) => {
+      if (elementsByIdRef.current.has(element.id)) return;
+      addElement(element);
+      const ctx = getContext();
+      if (ctx) drawElement(ctx, element);
     };
 
     // Everyone, including whoever pressed Clear, wipes the board when the server confirms.
     // Strokes mid-draw are dropped too: the server no longer knows them.
     const onCleared: ServerToClientEvents["board:cleared"] = () => {
-      strokesRef.current = [];
-      strokesByIdRef.current = new Map();
+      elementsRef.current = [];
+      elementsByIdRef.current = new Map();
       activeRef.current.clear();
       batcher.dispose();
       const ctx = getContext();
       if (ctx) paintBoard(ctx, []);
     };
 
-    // Undo: drop the stroke and repaint (strokes drawn after it may overlap it, so a full repaint
-    // is the simple, correct option). If it's the one we're drawing right now, stop drawing it.
-    const onRemoved: ServerToClientEvents["stroke:removed"] = ({ strokeId }) => {
-      if (!strokesByIdRef.current.delete(strokeId)) return;
-      strokesRef.current = strokesRef.current.filter((s) => s.id !== strokeId);
+    // Undo: drop the element and repaint (anything drawn after it may overlap it, so a full
+    // repaint is the simple, correct option). If it's a stroke we're drawing right now, stop.
+    const onRemoved: ServerToClientEvents["element:removed"] = ({ elementId }) => {
+      if (!elementsByIdRef.current.delete(elementId)) return;
+      elementsRef.current = elementsRef.current.filter((e) => e.id !== elementId);
       for (const [pointerId, s] of activeRef.current) {
-        if (s.id === strokeId) activeRef.current.delete(pointerId);
+        if (s.id === elementId) activeRef.current.delete(pointerId);
       }
       const ctx = getContext();
-      if (ctx) paintBoard(ctx, strokesRef.current);
+      if (ctx) paintBoard(ctx, elementsRef.current);
     };
 
-    // Redo: put the stroke back in its original place in the drawing order, so it layers
-    // correctly with strokes and eraser marks drawn after it.
-    const onRestored: ServerToClientEvents["stroke:restored"] = ({ stroke, afterId }) => {
-      if (strokesByIdRef.current.has(stroke.id)) return;
-      const list = strokesRef.current;
-      const afterIndex = afterId === null ? -1 : list.findIndex((s) => s.id === afterId);
+    // Redo: put the element back in its original place in the drawing order, so it layers
+    // correctly with everything (including eraser marks) drawn after it.
+    const onRestored: ServerToClientEvents["element:restored"] = ({ element, afterId }) => {
+      if (elementsByIdRef.current.has(element.id)) return;
+      const list = elementsRef.current;
+      const afterIndex = afterId === null ? -1 : list.findIndex((e) => e.id === afterId);
       const index = afterId !== null && afterIndex < 0 ? list.length : afterIndex + 1;
-      list.splice(index, 0, stroke);
-      strokesByIdRef.current.set(stroke.id, stroke);
+      list.splice(index, 0, element);
+      elementsByIdRef.current.set(element.id, element);
       const ctx = getContext();
       if (ctx) paintBoard(ctx, list);
     };
 
     socket.on("room:state", onState);
     socket.on("board:cleared", onCleared);
-    socket.on("stroke:removed", onRemoved);
-    socket.on("stroke:restored", onRestored);
+    socket.on("element:removed", onRemoved);
+    socket.on("element:restored", onRestored);
+    socket.on("element:added", onAdded);
     socket.on("stroke:start", onStart);
     socket.on("stroke:points", onPoints);
     socket.on("stroke:end", onEnd);
@@ -220,8 +248,9 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     return () => {
       socket.off("room:state", onState);
       socket.off("board:cleared", onCleared);
-      socket.off("stroke:removed", onRemoved);
-      socket.off("stroke:restored", onRestored);
+      socket.off("element:removed", onRemoved);
+      socket.off("element:restored", onRestored);
+      socket.off("element:added", onAdded);
       socket.off("stroke:start", onStart);
       socket.off("stroke:points", onPoints);
       socket.off("stroke:end", onEnd);
@@ -281,6 +310,7 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     e.currentTarget.setPointerCapture(e.pointerId);
 
     const stroke: Stroke = {
+      type: "stroke",
       id: crypto.randomUUID(),
       userId: LOCAL_USER_ID,
       color,
@@ -289,7 +319,7 @@ export const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
       points: [point],
     };
     activeRef.current.set(e.pointerId, stroke);
-    addStroke(stroke);
+    addElement(stroke);
 
     const ctx = getContext();
     if (ctx) drawDot(ctx, stroke, point);

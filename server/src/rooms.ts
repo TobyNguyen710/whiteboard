@@ -1,39 +1,45 @@
 import {
   DEFAULT_BOARD_NAME,
   DEFAULT_BOARD_SETTINGS,
+  elementCost,
   type AssignableRole,
+  type BoardElement,
   type BoardSettings,
+  type NewElement,
   type Point,
   type Role,
   type Stroke,
   type StrokeStartPayload,
 } from "@whiteboard/shared";
 
-export const MAX_STROKES_PER_ROOM = 10_000;
+export const MAX_ELEMENTS_PER_ROOM = 10_000;
 export const MAX_POINTS_PER_STROKE = 20_000;
-/** Caps a board's total size (~4 MB saved), so saves and late-join loads stay reasonable. */
+/**
+ * Caps a board's total size (~4 MB saved), so saves and late-join loads stay reasonable. Counted
+ * with elementCost: a stroke's points, a few points for anything else.
+ */
 export const MAX_POINTS_PER_ROOM = 200_000;
 /** Empty boards are kept this long so a refresh or a quick reconnect doesn't wipe them. */
 export const EMPTY_ROOM_TTL_MS = 10 * 60_000;
 
 export type Room = {
   id: string;
-  /** Full history in drawing order, including strokes still in progress. */
-  strokes: Stroke[];
+  /** Full history in drawing order, including strokes still being drawn. */
+  elements: BoardElement[];
   users: Set<string>;
   /** IDs of strokes still being drawn. */
   activeStrokeIds: Set<string>;
-  strokesById: Map<string, Stroke>;
-  /** Drawing-order position of every stroke on the board or waiting to be redone. */
+  elementsById: Map<string, BoardElement>;
+  /** Drawing-order position of every element on the board or waiting to be redone. */
   seqById: Map<string, number>;
   nextSeq: number;
-  /** Per user: IDs of their strokes, oldest first, that Ctrl+Z can remove. */
+  /** Per user: IDs of their elements, oldest first, that Ctrl+Z can remove. */
   undoStacks: Map<string, string[]>;
-  /** Per user: their undone strokes, most recent last, that Ctrl+Y can bring back. */
-  redoStacks: Map<string, Stroke[]>;
-  /** Total points across `strokes`. */
+  /** Per user: their undone elements, most recent last, that Ctrl+Y can bring back. */
+  redoStacks: Map<string, BoardElement[]>;
+  /** Total elementCost of `elements`. */
   pointCount: number;
-  /** Bumped on every change worth saving (strokes, owner, name, thumbnail). */
+  /** Bumped on every change worth saving (elements, owner, name, thumbnail, settings). */
   revision: number;
   /** Account that created the board, or null (created before login existed, or memory-only). */
   ownerId: string | null;
@@ -63,7 +69,7 @@ export type Room = {
   emptySince: number | null;
 };
 
-export type RestoredStroke = { stroke: Stroke; afterId: string | null };
+export type RestoredElement = { element: BoardElement; afterId: string | null };
 
 /** In-memory boards. Holds no socket or database code so the logic can be tested on its own. */
 export class RoomStore {
@@ -86,7 +92,7 @@ export class RoomStore {
   /** Create a board in memory, optionally from a saved one. Replaces nothing if it exists. */
   create(
     roomId: string,
-    strokes: Stroke[] = [],
+    elements: BoardElement[] = [],
     {
       ownerId = null,
       isNew = false,
@@ -112,15 +118,15 @@ export class RoomStore {
 
     const room: Room = {
       id: roomId,
-      strokes: [...strokes],
+      elements: [...elements],
       users: new Set(),
       activeStrokeIds: new Set(),
-      strokesById: new Map(strokes.map((s) => [s.id, s])),
+      elementsById: new Map(elements.map((e) => [e.id, e])),
       seqById: new Map(),
       nextSeq: 0,
       undoStacks: new Map(),
       redoStacks: new Map(),
-      pointCount: strokes.reduce((sum, s) => sum + s.points.length, 0),
+      pointCount: elements.reduce((sum, e) => sum + elementCost(e), 0),
       revision: 0,
       ownerId,
       isNew,
@@ -133,7 +139,7 @@ export class RoomStore {
       admitted: new Set(admitted),
       emptySince: this.now(),
     };
-    for (const stroke of strokes) room.seqById.set(stroke.id, room.nextSeq++);
+    for (const element of elements) room.seqById.set(element.id, room.nextSeq++);
     this.rooms.set(roomId, room);
     return room;
   }
@@ -151,7 +157,7 @@ export class RoomStore {
 
     // Strokes the user was still drawing are finished as they are.
     for (const strokeId of room.activeStrokeIds) {
-      if (room.strokesById.get(strokeId)?.userId === userId) room.activeStrokeIds.delete(strokeId);
+      if (room.elementsById.get(strokeId)?.userId === userId) room.activeStrokeIds.delete(strokeId);
     }
     // User IDs are per connection, so this user's undo history can never be used again.
     room.undoStacks.delete(userId);
@@ -162,11 +168,12 @@ export class RoomStore {
   startStroke(roomId: string, userId: string, payload: StrokeStartPayload): Stroke | null {
     const room = this.rooms.get(roomId);
     if (!room || !room.users.has(userId)) return null;
-    if (room.strokesById.has(payload.strokeId) || room.seqById.has(payload.strokeId)) return null;
-    if (room.strokes.length >= MAX_STROKES_PER_ROOM) return null;
+    if (room.elementsById.has(payload.strokeId) || room.seqById.has(payload.strokeId)) return null;
+    if (room.elements.length >= MAX_ELEMENTS_PER_ROOM) return null;
     if (room.pointCount >= MAX_POINTS_PER_ROOM) return null;
 
     const stroke: Stroke = {
+      type: "stroke",
       id: payload.strokeId,
       userId,
       color: payload.color,
@@ -174,17 +181,25 @@ export class RoomStore {
       tool: payload.tool,
       points: [payload.point],
     };
-    room.strokes.push(stroke);
-    room.strokesById.set(stroke.id, stroke);
+    this.append(room, userId, stroke);
     room.activeStrokeIds.add(stroke.id);
-    room.seqById.set(stroke.id, room.nextSeq++);
-    room.pointCount += 1;
-    room.revision++;
-
-    // A new stroke starts a new branch of history: what you undid can't be redone anymore.
-    this.stackFor(room.undoStacks, userId).push(stroke.id);
-    this.dropRedoStack(room, userId);
     return stroke;
+  }
+
+  /**
+   * Add a finished element (already validated, see parseNewElement). The server decides who drew
+   * it. Returns the element as stored, or null if it can't be added.
+   */
+  addElement(roomId: string, userId: string, element: NewElement): BoardElement | null {
+    const room = this.rooms.get(roomId);
+    if (!room || !room.users.has(userId)) return null;
+    if (room.elementsById.has(element.id) || room.seqById.has(element.id)) return null;
+    if (room.elements.length >= MAX_ELEMENTS_PER_ROOM) return null;
+    if (room.pointCount + elementCost(element) > MAX_POINTS_PER_ROOM) return null;
+
+    const stored = { ...element, userId } as BoardElement;
+    this.append(room, userId, stored);
+    return stored;
   }
 
   /** Append points to the user's in-progress stroke. Returns the points accepted (may be trimmed), or null. */
@@ -209,59 +224,59 @@ export class RoomStore {
     return true;
   }
 
-  /** Remove the user's most recent stroke still on the board. Returns its ID, or null if nothing to undo. */
+  /** Remove the user's most recent element still on the board. Returns its ID, or null if nothing to undo. */
   undo(roomId: string, userId: string): string | null {
     const room = this.rooms.get(roomId);
     if (!room || !room.users.has(userId)) return null;
 
     const undoStack = room.undoStacks.get(userId) ?? [];
     while (undoStack.length > 0) {
-      const strokeId = undoStack.pop()!;
-      const stroke = room.strokesById.get(strokeId);
-      if (!stroke) continue; // already gone (e.g. cleared)
+      const elementId = undoStack.pop()!;
+      const element = room.elementsById.get(elementId);
+      if (!element) continue; // already gone (e.g. cleared)
 
       // Undoing mid-stroke ends it; any points still arriving for it are ignored.
-      room.activeStrokeIds.delete(strokeId);
-      room.strokesById.delete(strokeId);
-      room.strokes.splice(room.strokes.indexOf(stroke), 1);
-      room.pointCount -= stroke.points.length;
+      room.activeStrokeIds.delete(elementId);
+      room.elementsById.delete(elementId);
+      room.elements.splice(room.elements.indexOf(element), 1);
+      room.pointCount -= elementCost(element);
       room.revision++;
-      this.stackFor(room.redoStacks, userId).push(stroke);
-      return strokeId;
+      this.stackFor(room.redoStacks, userId).push(element);
+      return elementId;
     }
     return null;
   }
 
-  /** Put the user's most recently undone stroke back in its original drawing position. */
-  redo(roomId: string, userId: string): RestoredStroke | null {
+  /** Put the user's most recently undone element back in its original drawing position. */
+  redo(roomId: string, userId: string): RestoredElement | null {
     const room = this.rooms.get(roomId);
     if (!room || !room.users.has(userId)) return null;
-    if (room.strokes.length >= MAX_STROKES_PER_ROOM) return null;
+    if (room.elements.length >= MAX_ELEMENTS_PER_ROOM) return null;
 
     const redoStack = room.redoStacks.get(userId);
-    const stroke = redoStack?.at(-1);
-    if (!redoStack || !stroke) return null;
-    if (room.pointCount + stroke.points.length > MAX_POINTS_PER_ROOM) return null;
+    const element = redoStack?.at(-1);
+    if (!redoStack || !element) return null;
+    if (room.pointCount + elementCost(element) > MAX_POINTS_PER_ROOM) return null;
     redoStack.pop();
 
-    const seq = room.seqById.get(stroke.id)!;
-    let index = room.strokes.length;
-    while (index > 0 && room.seqById.get(room.strokes[index - 1]!.id)! > seq) index--;
+    const seq = room.seqById.get(element.id)!;
+    let index = room.elements.length;
+    while (index > 0 && room.seqById.get(room.elements[index - 1]!.id)! > seq) index--;
 
-    room.strokes.splice(index, 0, stroke);
-    room.strokesById.set(stroke.id, stroke);
-    room.pointCount += stroke.points.length;
+    room.elements.splice(index, 0, element);
+    room.elementsById.set(element.id, element);
+    room.pointCount += elementCost(element);
     room.revision++;
-    this.stackFor(room.undoStacks, userId).push(stroke.id);
-    return { stroke, afterId: index > 0 ? room.strokes[index - 1]!.id : null };
+    this.stackFor(room.undoStacks, userId).push(element.id);
+    return { element, afterId: index > 0 ? room.elements[index - 1]!.id : null };
   }
 
   /** Wipe a board's history, including strokes still being drawn. Only someone on the board can. */
   clear(roomId: string, userId: string): boolean {
     const room = this.rooms.get(roomId);
     if (!room || !room.users.has(userId)) return false;
-    room.strokes = [];
-    room.strokesById.clear();
+    room.elements = [];
+    room.elementsById.clear();
     room.activeStrokeIds.clear();
     room.seqById.clear();
     // Clearing resets everyone's undo/redo: there is nothing left to step back through.
@@ -399,8 +414,20 @@ export class RoomStore {
   private getActiveStroke(roomId: string, userId: string, strokeId: string): Stroke | null {
     const room = this.rooms.get(roomId);
     if (!room || !room.activeStrokeIds.has(strokeId)) return null;
-    const stroke = room.strokesById.get(strokeId);
-    return stroke?.userId === userId ? stroke : null;
+    const element = room.elementsById.get(strokeId);
+    return element?.type === "stroke" && element.userId === userId ? element : null;
+  }
+
+  /** Put a new element on top, and make it the user's newest undo step. */
+  private append(room: Room, userId: string, element: BoardElement): void {
+    room.elements.push(element);
+    room.elementsById.set(element.id, element);
+    room.seqById.set(element.id, room.nextSeq++);
+    room.pointCount += elementCost(element);
+    room.revision++;
+    // Something new starts a new branch of history: what you undid can't be redone anymore.
+    this.stackFor(room.undoStacks, userId).push(element.id);
+    this.dropRedoStack(room, userId);
   }
 
   private stackFor<T>(stacks: Map<string, T[]>, userId: string): T[] {
@@ -412,9 +439,9 @@ export class RoomStore {
     return stack;
   }
 
-  /** Forget a user's undone strokes for good. */
+  /** Forget a user's undone elements for good. */
   private dropRedoStack(room: Room, userId: string): void {
-    for (const stroke of room.redoStacks.get(userId) ?? []) room.seqById.delete(stroke.id);
+    for (const element of room.redoStacks.get(userId) ?? []) room.seqById.delete(element.id);
     room.redoStacks.delete(userId);
   }
 }

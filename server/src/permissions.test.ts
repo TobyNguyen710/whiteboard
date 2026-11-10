@@ -132,10 +132,14 @@ describe("roles", () => {
 
     host.received.length = 0;
     bob.emit("stroke:start", stroke("after"));
-    bob.emit("stroke:undo");
+    bob.emit("element:add", {
+      element: { type: "stroke", id: "added", color: "#1e1e1e", size: 4, tool: "pen", points: [{ x: 1, y: 1 }] },
+    });
+    bob.emit("board:undo");
     await settle();
     expect(got(host, "stroke:start")).toBe(false);
-    expect(got(host, "stroke:removed")).toBe(false);
+    expect(got(host, "element:added")).toBe(false);
+    expect(got(host, "element:removed")).toBe(false);
   });
 
   it("stops a stroke that's in progress when someone becomes a viewer", async () => {
@@ -223,7 +227,7 @@ describe("clearing", () => {
   });
 
   it("keeps the old rule on boards from before accounts (no host): editors can clear", async () => {
-    await store.save("legacy1234", { strokes: [], ownerId: null });
+    await store.save("legacy1234", { elements: [], ownerId: null });
     const { client: a, state } = await join("legacy1234", { token: "bob-token" });
     expect(state).toMatchObject({ role: "editor", hasHost: false });
     const { client: b } = await join("legacy1234", { guestName: "Guest" });

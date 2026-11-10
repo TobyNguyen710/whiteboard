@@ -8,7 +8,7 @@ import {
   type AssignableRole,
 } from "@whiteboard/shared";
 import type { BoardMeta, BoardStore, SavedBoard } from "./persistence.js";
-import { parseStoredStrokes } from "./validate.js";
+import { parseStoredElements } from "./validate.js";
 
 /**
  * Boards saved in Supabase Postgres (tables `boards` and `board_members`, see
@@ -53,7 +53,8 @@ export class SupabaseBoardStore implements BoardStore {
     if (access.error) throw new Error(access.error.message);
 
     return {
-      strokes: parseStoredStrokes(data.strokes),
+      // The column is still called "strokes" from v1; it holds every kind of element.
+      elements: parseStoredElements(data.strokes),
       ownerId: typeof data.owner_id === "string" ? data.owner_id : null,
       name: cleanBoardName(data.name) ?? DEFAULT_BOARD_NAME,
       thumbnail: isValidThumbnail(data.thumbnail) ? data.thumbnail : null,
@@ -73,7 +74,7 @@ export class SupabaseBoardStore implements BoardStore {
   async save(boardId: string, board: SavedBoard): Promise<void> {
     const { error } = await this.db.from("boards").upsert({
       id: boardId,
-      strokes: board.strokes,
+      strokes: board.elements,
       owner_id: board.ownerId ?? null,
       name: board.name ?? DEFAULT_BOARD_NAME,
       thumbnail: board.thumbnail ?? null,

@@ -4,7 +4,7 @@ import {
   EMPTY_ROOM_TTL_MS,
   MAX_POINTS_PER_ROOM,
   MAX_POINTS_PER_STROKE,
-  MAX_STROKES_PER_ROOM,
+  MAX_ELEMENTS_PER_ROOM,
   RoomStore,
 } from "./rooms.js";
 
@@ -18,7 +18,7 @@ const start = (strokeId: string): StrokeStartPayload => ({
   point: { x: 0, y: 0 },
 });
 
-const ids = (store: RoomStore) => store.get(ROOM)!.strokes.map((s) => s.id);
+const ids = (store: RoomStore) => store.get(ROOM)!.elements.map((s) => s.id);
 
 describe("RoomStore", () => {
   let now: number;
@@ -65,7 +65,7 @@ describe("RoomStore", () => {
       expect(store.addPoints(ROOM, "alice", "s1", [{ x: 1, y: 1 }])).toEqual([{ x: 1, y: 1 }]);
       expect(store.endStroke(ROOM, "alice", "s1")).toBe(true);
 
-      const [stroke] = store.get(ROOM)!.strokes;
+      const [stroke] = store.get(ROOM)!.elements;
       expect(stroke).toMatchObject({ id: "s1", userId: "alice", points: [{ x: 0, y: 0 }, { x: 1, y: 1 }] });
     });
 
@@ -103,7 +103,7 @@ describe("RoomStore", () => {
     });
 
     it("caps the number of strokes per board", () => {
-      for (let i = 0; i < MAX_STROKES_PER_ROOM; i++) store.startStroke(ROOM, "alice", start(`s${i}`));
+      for (let i = 0; i < MAX_ELEMENTS_PER_ROOM; i++) store.startStroke(ROOM, "alice", start(`s${i}`));
       expect(store.startStroke(ROOM, "alice", start("one-too-many"))).toBeNull();
     });
   });
@@ -126,8 +126,8 @@ describe("RoomStore", () => {
       store.undo(ROOM, "alice");
       store.undo(ROOM, "alice");
 
-      expect(store.redo(ROOM, "alice")).toMatchObject({ stroke: { id: "a1" }, afterId: null });
-      expect(store.redo(ROOM, "alice")).toMatchObject({ stroke: { id: "a2" }, afterId: "a1" });
+      expect(store.redo(ROOM, "alice")).toMatchObject({ element: { id: "a1" }, afterId: null });
+      expect(store.redo(ROOM, "alice")).toMatchObject({ element: { id: "a2" }, afterId: "a1" });
       expect(store.redo(ROOM, "alice")).toBeNull();
       expect(ids(store)).toEqual(["a1", "a2", "b1"]);
     });
@@ -144,7 +144,7 @@ describe("RoomStore", () => {
       store.startStroke(ROOM, "alice", start("a3"));
 
       expect(store.redo(ROOM, "alice")).toBeNull();
-      expect(store.redo(ROOM, "bob")).toMatchObject({ stroke: { id: "b1" } });
+      expect(store.redo(ROOM, "bob")).toMatchObject({ element: { id: "b1" } });
     });
 
     it("an undone stroke's ID can't be reused while it can still be redone", () => {
@@ -169,6 +169,7 @@ describe("RoomStore", () => {
 
   describe("saved boards", () => {
     const saved = (id: string, points = 1) => ({
+      type: "stroke" as const,
       id,
       userId: "someone",
       color: "#1e1e1e",
@@ -183,7 +184,7 @@ describe("RoomStore", () => {
       store.startStroke("saved1234", "alice", start("new1"));
       store.undo("saved1234", "alice");
       expect(store.redo("saved1234", "alice")).toMatchObject({ afterId: "old2" });
-      expect(store.get("saved1234")!.strokes.map((s) => s.id)).toEqual(["old1", "old2", "new1"]);
+      expect(store.get("saved1234")!.elements.map((s) => s.id)).toEqual(["old1", "old2", "new1"]);
     });
 
     it("counts points from saved strokes", () => {
@@ -275,6 +276,53 @@ describe("RoomStore", () => {
       expect(store.remove(ROOM)).toBe(true);
       expect(store.get(ROOM)).toBeUndefined();
       expect(store.rename(ROOM, "Gone")).toBe(false);
+    });
+  });
+
+  describe("finished elements", () => {
+    const element = (id: string, points = 1) => ({
+      type: "stroke" as const,
+      id,
+      color: "#1e1e1e",
+      size: 4,
+      tool: "pen" as const,
+      points: Array.from({ length: points }, (_, i) => ({ x: i, y: i })),
+    });
+
+    it("adds an element on top, recorded as drawn by whoever sent it", () => {
+      store.startStroke(ROOM, "bob", start("b1"));
+      expect(store.addElement(ROOM, "alice", element("e1", 3))).toMatchObject({ id: "e1", userId: "alice" });
+      expect(ids(store)).toEqual(["b1", "e1"]);
+      expect(store.get(ROOM)!.pointCount).toBe(4);
+      expect(store.get(ROOM)!.activeStrokeIds.has("e1")).toBe(false);
+    });
+
+    it("never keeps an author sent with the element", () => {
+      const spoofed = { ...element("e1"), userId: "mallory" } as ReturnType<typeof element>;
+      expect(store.addElement(ROOM, "alice", spoofed)?.userId).toBe("alice");
+    });
+
+    it("undoes and redoes like a stroke, in drawing order", () => {
+      store.addElement(ROOM, "alice", element("e1"));
+      store.startStroke(ROOM, "bob", start("b1"));
+      expect(store.undo(ROOM, "alice")).toBe("e1");
+      expect(store.redo(ROOM, "alice")).toMatchObject({ element: { id: "e1" }, afterId: null });
+      expect(ids(store)).toEqual(["e1", "b1"]);
+    });
+
+    it("can't take points like a stroke being drawn", () => {
+      store.addElement(ROOM, "alice", element("e1"));
+      expect(store.addPoints(ROOM, "alice", "e1", [{ x: 5, y: 5 }])).toBeNull();
+    });
+
+    it("rejects reused IDs, people not on the board, and boards that are full", () => {
+      store.addElement(ROOM, "alice", element("e1"));
+      expect(store.addElement(ROOM, "bob", element("e1"))).toBeNull();
+      expect(store.addElement(ROOM, "mallory", element("e2"))).toBeNull();
+      store.create("full1234", [{ ...element("big", MAX_POINTS_PER_ROOM - 1), userId: "someone" }]);
+      store.join("full1234", "alice");
+      expect(store.addElement("full1234", "alice", element("e3", 2))).toBeNull();
+      expect(store.addElement("full1234", "alice", element("e4", 1))).not.toBeNull();
     });
   });
 

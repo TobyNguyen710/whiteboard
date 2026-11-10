@@ -2,12 +2,12 @@ import {
   DEFAULT_BOARD_NAME,
   type AssignableRole,
   type BoardSettings,
-  type Stroke,
+  type BoardElement,
 } from "@whiteboard/shared";
 import type { RoomStore } from "./rooms.js";
 
 export type SavedBoard = {
-  strokes: Stroke[];
+  elements: BoardElement[];
   ownerId?: string | null;
   name?: string;
   thumbnail?: string | null;
@@ -170,7 +170,7 @@ export class BoardSaver {
   private async load(store: BoardStore, roomId: string): Promise<void> {
     try {
       const saved = await store.load(roomId);
-      const room = this.rooms.create(roomId, saved?.strokes ?? [], {
+      const room = this.rooms.create(roomId, saved?.elements ?? [], {
         ownerId: saved?.ownerId ?? null,
         isNew: saved === null,
         name: saved?.name,
@@ -210,7 +210,7 @@ export class BoardSaver {
 
       // Snapshot now: drawing continues while the save is in flight.
       const snapshot: SavedBoard = {
-        strokes: structuredClone(room.strokes),
+        elements: structuredClone(room.elements),
         ownerId: room.ownerId,
         name: room.name,
         thumbnail: room.thumbnail,

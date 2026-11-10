@@ -23,7 +23,7 @@ import type { Authenticator } from "./auth.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import { BoardSaver, type BoardStore } from "./persistence.js";
 import { RoomStore } from "./rooms.js";
-import { parseStrokeEnd, parseStrokePoints, parseStrokeStart } from "./validate.js";
+import { parseNewElement, parseStrokeEnd, parseStrokePoints, parseStrokeStart } from "./validate.js";
 
 /** Wrong passwords allowed per minute, from one address and on one board overall. */
 const PASSWORD_TRIES_PER_ADDRESS = 5;
@@ -368,7 +368,7 @@ export function createWhiteboardServer({
 
       // Late joiners catch up on the full history, including strokes still being drawn.
       socket.emit("room:state", {
-        strokes: room.strokes,
+        elements: room.elements,
         name: room.name,
         role: rooms.roleOf(roomId, socket.data.user.memberKey, accountId),
         hasHost: room.ownerId !== null,
@@ -406,19 +406,28 @@ export function createWhiteboardServer({
       socket.to(roomId).emit("stroke:end", payload);
     });
 
-    // Undo/redo only touch your own strokes; everyone (including you) is told what changed.
-    socket.on("stroke:undo", () => {
+    // A finished element in one go. The server fills in who drew it.
+    socket.on("element:add", (raw) => {
       const roomId = socket.data.roomId;
-      if (!roomId || !permissionsOf(socket)?.canDraw) return;
-      const strokeId = rooms.undo(roomId, userId);
-      if (strokeId) io.to(roomId).emit("stroke:removed", { strokeId });
+      const element = parseNewElement(raw);
+      if (!roomId || !element || !permissionsOf(socket)?.canDraw) return;
+      const added = rooms.addElement(roomId, userId, element);
+      if (added) socket.to(roomId).emit("element:added", { element: added });
     });
 
-    socket.on("stroke:redo", () => {
+    // Undo/redo only touch your own elements; everyone (including you) is told what changed.
+    socket.on("board:undo", () => {
+      const roomId = socket.data.roomId;
+      if (!roomId || !permissionsOf(socket)?.canDraw) return;
+      const elementId = rooms.undo(roomId, userId);
+      if (elementId) io.to(roomId).emit("element:removed", { elementId });
+    });
+
+    socket.on("board:redo", () => {
       const roomId = socket.data.roomId;
       if (!roomId || !permissionsOf(socket)?.canDraw) return;
       const restored = rooms.redo(roomId, userId);
-      if (restored) io.to(roomId).emit("stroke:restored", restored);
+      if (restored) io.to(roomId).emit("element:restored", restored);
     });
 
     // The host clears the board (or any editor on boards without a host). The client asks first.

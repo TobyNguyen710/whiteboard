@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { MAX_BRUSH_SIZE } from "@whiteboard/shared";
 import {
   MAX_POINTS_PER_BATCH,
-  parseStoredStrokes,
+  parseNewElement,
+  parseStoredElements,
   parseStrokeEnd,
   parseStrokePoints,
   parseStrokeStart,
@@ -84,15 +85,20 @@ describe("parseStrokeEnd", () => {
   });
 });
 
-describe("parseStoredStrokes", () => {
+describe("parseStoredElements", () => {
   const good = { id: "s1", userId: "u1", color: "#1e1e1e", size: 4, tool: "pen", points: [{ x: 1, y: 2 }] };
 
-  it("keeps valid strokes", () => {
-    expect(parseStoredStrokes([good])).toEqual([good]);
+  it("reads strokes saved before elements had a type", () => {
+    expect(parseStoredElements([good])).toEqual([{ type: "stroke", ...good }]);
+  });
+
+  it("keeps typed strokes, and drops kinds it doesn't know", () => {
+    expect(parseStoredElements([{ ...good, type: "stroke" }])).toEqual([{ type: "stroke", ...good }]);
+    expect(parseStoredElements([{ ...good, id: "s2", type: "hologram" }])).toEqual([]);
   });
 
   it("drops invalid strokes and keeps the rest", () => {
-    const strokes = parseStoredStrokes([
+    const strokes = parseStoredElements([
       good,
       { ...good, id: "s2", color: "red" },
       { ...good, id: "s3", points: [] },
@@ -105,7 +111,35 @@ describe("parseStoredStrokes", () => {
   });
 
   it("returns nothing for non-arrays", () => {
-    expect(parseStoredStrokes(null)).toEqual([]);
-    expect(parseStoredStrokes({ strokes: [] })).toEqual([]);
+    expect(parseStoredElements(null)).toEqual([]);
+    expect(parseStoredElements({ strokes: [] })).toEqual([]);
+  });
+});
+
+describe("parseNewElement", () => {
+  const stroke = { type: "stroke", id: "e1", color: "#1e1e1e", size: 4, tool: "pen", points: [{ x: 1.23, y: 2 }] };
+
+  it("accepts a whole stroke and rounds its points", () => {
+    expect(parseNewElement({ element: stroke })).toEqual({ ...stroke, points: [{ x: 1.2, y: 2 }] });
+  });
+
+  it("ignores who the client says drew it", () => {
+    expect(parseNewElement({ element: { ...stroke, userId: "someone-else" } })).not.toHaveProperty("userId");
+  });
+
+  it("rejects unknown kinds, missing types, and bad fields", () => {
+    expect(parseNewElement({ element: { ...stroke, type: "hologram" } })).toBeNull();
+    expect(parseNewElement({ element: { ...stroke, type: undefined } })).toBeNull();
+    expect(parseNewElement({ element: { ...stroke, color: "red" } })).toBeNull();
+    expect(parseNewElement({ element: { ...stroke, points: [] } })).toBeNull();
+    expect(parseNewElement({ element: { ...stroke, id: "" } })).toBeNull();
+    expect(parseNewElement({ element: { ...stroke, points: [{ x: Infinity, y: 0 }] } })).toBeNull();
+    expect(parseNewElement(stroke)).toBeNull();
+    expect(parseNewElement(null)).toBeNull();
+  });
+
+  it("caps the points sent in one go", () => {
+    const points = Array.from({ length: MAX_POINTS_PER_BATCH + 1 }, () => ({ x: 0, y: 0 }));
+    expect(parseNewElement({ element: { ...stroke, points } })).toBeNull();
   });
 });

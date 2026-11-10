@@ -34,7 +34,7 @@ class FlakyStore extends MemoryBoardStore {
 }
 
 const savedIds = async (store: BoardStore, id: string) =>
-  (await store.load(id))?.strokes.map((s) => s.id);
+  (await store.load(id))?.elements.map((s) => s.id);
 
 describe("BoardSaver", () => {
   let now: number;
@@ -51,15 +51,15 @@ describe("BoardSaver", () => {
 
   it("loads a saved board the first time it's opened", async () => {
     await store.save(ROOM, {
-      strokes: [{ id: "old", userId: "u", color: "#1e1e1e", size: 4, tool: "pen", points: [{ x: 1, y: 1 }] }],
+      elements: [{ type: "stroke", id: "old", userId: "u", color: "#1e1e1e", size: 4, tool: "pen", points: [{ x: 1, y: 1 }] }],
     });
     await saver.ensureLoaded(ROOM);
-    expect(rooms.get(ROOM)!.strokes.map((s) => s.id)).toEqual(["old"]);
+    expect(rooms.get(ROOM)!.elements.map((s) => s.id)).toEqual(["old"]);
   });
 
   it("starts a never-saved board empty", async () => {
     await saver.ensureLoaded(ROOM);
-    expect(rooms.get(ROOM)!.strokes).toEqual([]);
+    expect(rooms.get(ROOM)!.elements).toEqual([]);
   });
 
   it("shares one load when two people open a board at once", async () => {
@@ -95,10 +95,10 @@ describe("BoardSaver", () => {
     const flushing = saver.flush();
     rooms.addPoints(ROOM, "alice", "s1", [{ x: 5, y: 5 }]);
     await flushing;
-    expect((await store.load(ROOM))!.strokes[0]!.points).toHaveLength(1);
+    expect((await store.load(ROOM))!.elements[0]!.points).toHaveLength(1);
 
     await saver.flush(); // the new point is saved on the next flush
-    expect((await store.load(ROOM))!.strokes[0]!.points).toHaveLength(2);
+    expect((await store.load(ROOM))!.elements[0]!.points).toHaveLength(2);
   });
 
   it("retries a failed save on the next flush", async () => {
@@ -118,7 +118,7 @@ describe("BoardSaver", () => {
 
   it("never overwrites a board whose load failed", async () => {
     await store.save(ROOM, {
-      strokes: [{ id: "precious", userId: "u", color: "#1e1e1e", size: 4, tool: "pen", points: [{ x: 1, y: 1 }] }],
+      elements: [{ type: "stroke", id: "precious", userId: "u", color: "#1e1e1e", size: 4, tool: "pen", points: [{ x: 1, y: 1 }] }],
     });
     store.saves = 0; // don't count the seeding above
     store.failLoads = true;

@@ -152,10 +152,10 @@ function Board({ roomId }: { roomId: string }) {
   const clearBoard = () => socket?.emit("board:clear", { roomId });
   const { canDraw } = permissions;
   const undo = useCallback(() => {
-    if (canDraw && socket?.connected) socket.emit("stroke:undo");
+    if (canDraw && socket?.connected) socket.emit("board:undo");
   }, [canDraw, socket]);
   const redo = useCallback(() => {
-    if (canDraw && socket?.connected) socket.emit("stroke:redo");
+    if (canDraw && socket?.connected) socket.emit("board:redo");
   }, [canDraw, socket]);
 
   // Host only (the server checks): make someone an editor or a viewer.
